@@ -370,18 +370,22 @@ where
 		)?;
 		match r_addr {
 			Some(a) => {
-				let tor_config_lock = self.tor_config.lock();
-				let res = try_slatepack_sync_workflow(
-					&ret_slate,
-					&a,
-					tor_config_lock.clone(),
-					None,
-					true,
-					self.doctest_mode,
-				);
+				let tc = self.tor_config.lock();
+				let can_send = if let Some(tc) = tc.as_ref() {
+					tc.skip_send(None)
+				} else {
+					false
+				};
+				if self.doctest_mode || !can_send {
+					return Ok(ret_slate);
+				}
+				let res = try_slatepack_sync_workflow(&ret_slate, &a, tc.clone(), None, true);
 				match res {
-					Ok(s) => Ok(s.unwrap()),
-					Err(_) => Ok(ret_slate),
+					Ok(s) => Ok(s),
+					Err(e) => {
+						error!("Error on sending over Tor: {}", e);
+						Ok(ret_slate)
+					}
 				}
 			}
 			None => Ok(ret_slate),
