@@ -827,10 +827,12 @@ where
 		slate: &Slate,
 		args: InitTxArgs,
 	) -> Result<Slate, Error> {
-		let mut w_lock = self.wallet_inst.lock();
-		let w = w_lock.lc_provider()?.wallet_inst()?;
 		let send_args = args.send_args.clone();
-		let slate = owner::process_invoice_tx(w, keychain_mask, slate, args, self.doctest_mode)?;
+		let slate = {
+			let mut w_lock = self.wallet_inst.lock();
+			let w = w_lock.lc_provider()?.wallet_inst()?;
+			owner::process_invoice_tx(w, keychain_mask, slate, args, self.doctest_mode)?
+		};
 		// Helper functionality. If send arguments exist, attempt to send
 		match send_args {
 			Some(sa) => {
@@ -847,8 +849,14 @@ where
 				let res = try_slatepack_sync_workflow(&slate, &sa.dest, tc, None, true);
 				match res {
 					Ok(s) => {
-						let parent_key_id = w.parent_key_id();
-						let _ = update_tx_slate_state(w, keychain_mask, &parent_key_id, &s);
+						// Update slate state.
+						{
+							let mut w_lock = self.wallet_inst.lock();
+							let w = w_lock.lc_provider()?.wallet_inst()?;
+							let parent_key_id = w.parent_key_id();
+							let _ = update_tx_slate_state(w, keychain_mask, &parent_key_id, &s);
+						}
+						// Output slatepack message to file.
 						let _ = output_slatepack_file(&self, keychain_mask, &s, &sa.dest);
 						Ok(s)
 					}
