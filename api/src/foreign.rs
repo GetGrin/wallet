@@ -373,7 +373,7 @@ where
 			Some(a) => {
 				let tc = self.tor_config.lock();
 				let can_send = if let Some(tc) = tc.as_ref() {
-					tc.skip_send(None)
+					tc.send_tor(None)
 				} else {
 					false
 				};

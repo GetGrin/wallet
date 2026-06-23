@@ -450,7 +450,7 @@ where
 	};
 
 	let can_send = if let Some(tc) = tor_config.as_ref() {
-		tc.skip_send(args.skip_tor)
+		tc.send_tor(args.skip_tor)
 	} else {
 		false
 	};
@@ -707,7 +707,7 @@ where
 	};
 
 	let can_send = if let Some(tc) = tor_config.as_ref() {
-		tc.skip_send(args.skip_tor)
+		tc.send_tor(args.skip_tor)
 	} else {
 		false
 	};
@@ -1050,7 +1050,7 @@ where
 	};
 
 	let can_send = if let Some(tc) = tor_config.as_ref() {
-		tc.skip_send(args.skip_tor)
+		tc.send_tor(args.skip_tor)
 	} else {
 		false
 	};

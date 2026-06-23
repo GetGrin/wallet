@@ -195,12 +195,12 @@ impl Default for TorConfig {
 }
 
 impl TorConfig {
-	/// Check if attempt to send over Tor must be skipped using provided possible argument at priority.
-	pub fn skip_send(&self, skip_arg: Option<bool>) -> bool {
+	/// Check if attempt to send over Tor is needed using provided possible argument at priority.
+	pub fn send_tor(&self, skip_arg: Option<bool>) -> bool {
 		if let Some(skip_tor) = skip_arg {
-			return skip_tor;
+			return !skip_tor;
 		}
-		self.skip_send_attempt.unwrap_or(false)
+		!self.skip_send_attempt.unwrap_or(false)
 	}
 }
 

@@ -677,7 +677,7 @@ where
 				let tor_config_lock = self.tor_config.lock();
 				let tc = tor_config_lock.clone();
 				let can_send = if let Some(tc) = tc.as_ref() {
-					tc.skip_send(sa.skip_tor)
+					tc.send_tor(sa.skip_tor)
 				} else {
 					false
 				};
@@ -837,7 +837,7 @@ where
 				let tor_config_lock = self.tor_config.lock();
 				let tc = tor_config_lock.clone();
 				let can_send = if let Some(tc) = tc.as_ref() {
-					tc.skip_send(sa.skip_tor)
+					tc.send_tor(sa.skip_tor)
 				} else {
 					false
 				};
