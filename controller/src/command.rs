@@ -40,6 +40,7 @@ use std::sync::Arc;
 use std::thread;
 use std::time::Duration;
 use uuid::Uuid;
+use grin_wallet_libwallet::api_impl::types::update_tx_slate_state;
 
 fn show_recovery_phrase(phrase: ZeroingString) {
 	println!("Your recovery phrase is:");
@@ -718,7 +719,17 @@ where
 	let res = try_slatepack_sync_workflow(&slate, &dest, tor_config, None, true);
 
 	match res {
-		Ok(_) => {
+		Ok(s) => {
+			// Update slate state.
+			{
+				let mut w_lock = owner_api.wallet_inst.lock();
+				let w = w_lock.lc_provider()?.wallet_inst()?;
+				let parent_key_id = w.parent_key_id();
+				match update_tx_slate_state(w, keychain_mask, &parent_key_id, &s) {
+					Ok(_) => {}
+					Err(e) => error!("Error on updating slate state: {}", e),
+				}
+			}
 			println!();
 			println!(
 				"Transaction received and sent back to sender at {} for finalization.",
@@ -1061,7 +1072,17 @@ where
 	let res = try_slatepack_sync_workflow(&slate, &dest, tor_config, None, true);
 
 	match res {
-		Ok(_) => {
+		Ok(s) => {
+			// Update slate state.
+			{
+				let mut w_lock = owner_api.wallet_inst.lock();
+				let w = w_lock.lc_provider()?.wallet_inst()?;
+				let parent_key_id = w.parent_key_id();
+				match update_tx_slate_state(w, keychain_mask, &parent_key_id, &s) {
+					Ok(_) => {}
+					Err(e) => error!("Error on updating slate state: {}", e),
+				}
+			}
 			println!();
 			println!(
 				"Transaction paid and sent back to initiator at {} for finalization.",
