@@ -384,12 +384,15 @@ where
 				match res {
 					Ok(s) => {
 						let parent_key_id = w.parent_key_id();
-						let _ = update_tx_slate_state(
+						match update_tx_slate_state(
 							w,
 							(&self.keychain_mask).as_ref(),
 							&parent_key_id,
 							&s,
-						);
+						) {
+							Ok(_) => {}
+							Err(e) => error!("Error on updating slate state: {}", e),
+						}
 						Ok(s)
 					}
 					Err(e) => {

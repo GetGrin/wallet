@@ -854,10 +854,16 @@ where
 							let mut w_lock = self.wallet_inst.lock();
 							let w = w_lock.lc_provider()?.wallet_inst()?;
 							let parent_key_id = w.parent_key_id();
-							let _ = update_tx_slate_state(w, keychain_mask, &parent_key_id, &s);
+							match update_tx_slate_state(w, keychain_mask, &parent_key_id, &s) {
+								Ok(_) => {}
+								Err(e) => error!("Error on updating slate state: {}", e),
+							}
 						}
 						// Output slatepack message to file.
-						let _ = output_slatepack_file(&self, keychain_mask, &s, &sa.dest);
+						match output_slatepack_file(&self, keychain_mask, &s, &sa.dest) {
+							Ok(_) => {}
+							Err(e) => error!("Error on saving output slatepack message: {}", e),
+						}
 						Ok(s)
 					}
 					Err(e) => {
