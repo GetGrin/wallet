@@ -39,6 +39,8 @@ use crate::util::{from_hex, static_secp_instance, Mutex, ZeroingString};
 use grin_wallet_util::OnionV3Address;
 use libwallet::api_impl::types::update_tx_slate_state;
 use std::convert::TryFrom;
+use std::fs::File;
+use std::io::Write;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::mpsc::{channel, Sender};
 use std::sync::Arc;
@@ -687,13 +689,6 @@ where
 					Ok(s) => {
 						self.tx_lock_outputs(keychain_mask, &s)?;
 						let ret_slate = self.finalize_tx(keychain_mask, &s)?;
-						// Update slate state to actual.
-						{
-							let mut w_lock = self.wallet_inst.lock();
-							let w = w_lock.lc_provider()?.wallet_inst()?;
-							let parent_key_id = w.parent_key_id();
-							let _ = update_tx_slate_state(w, keychain_mask, &parent_key_id, &s);
-						}
 						if sa.post_tx {
 							let result = self.post_tx(keychain_mask, &ret_slate, sa.fluff);
 							match result {
@@ -854,6 +849,7 @@ where
 					Ok(s) => {
 						let parent_key_id = w.parent_key_id();
 						let _ = update_tx_slate_state(w, keychain_mask, &parent_key_id, &s);
+						let _ = output_slatepack_file(&self, keychain_mask, &s, &sa.dest);
 						Ok(s)
 					}
 					Err(e) => {
@@ -2617,4 +2613,39 @@ macro_rules! doctest_helper_setup_doc_env {
 		lc.open_wallet(None, pw, false, false);
 		let mut $wallet = Arc::new(Mutex::new(wallet));
 	};
+}
+
+/// Output slatepack message to file.
+fn output_slatepack_file<L, C, K>(
+	api: &Owner<L, C, K>,
+	keychain_mask: Option<&SecretKey>,
+	slate: &Slate,
+	dest: &str,
+) -> Result<(), Error>
+where
+	L: WalletLCProvider<'static, C, K> + 'static,
+	C: NodeClient + 'static,
+	K: Keychain + 'static,
+{
+	let address = match SlatepackAddress::try_from(dest) {
+		Ok(a) => Some(a),
+		Err(_) => None,
+	};
+	// encrypt for recipient by default
+	let recipients = match address.clone() {
+		Some(a) => vec![a],
+		None => vec![],
+	};
+	let message = api.create_slatepack_message(keychain_mask, &slate, Some(0), recipients)?;
+	let tld = api.get_top_level_directory()?;
+
+	// Create a directory to which files will be output.
+	let slate_dir = format!("{}/{}", tld, "slatepack");
+	let _ = std::fs::create_dir_all(slate_dir.clone());
+	let out_file_name = format!("{}/{}.{}.slatepack", slate_dir, slate.id, slate.state);
+
+	let mut output = File::create(out_file_name.clone())?;
+	output.write_all(&message.as_bytes())?;
+	output.sync_all()?;
+	Ok(())
 }

@@ -24,6 +24,7 @@ use crate::libwallet::{
 use crate::try_slatepack_sync_workflow;
 use crate::util::secp::key::SecretKey;
 use crate::util::Mutex;
+use libwallet::api_impl::types::update_tx_slate_state;
 use std::sync::Arc;
 
 /// ForeignAPI Middleware Check callback
@@ -381,7 +382,16 @@ where
 				}
 				let res = try_slatepack_sync_workflow(&ret_slate, &a, tc.clone(), None, true);
 				match res {
-					Ok(s) => Ok(s),
+					Ok(s) => {
+						let parent_key_id = w.parent_key_id();
+						let _ = update_tx_slate_state(
+							w,
+							(&self.keychain_mask).as_ref(),
+							&parent_key_id,
+							&s,
+						);
+						Ok(s)
+					}
 					Err(e) => {
 						error!("Error on sending over Tor: {}", e);
 						Ok(ret_slate)
