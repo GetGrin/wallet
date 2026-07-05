@@ -42,7 +42,7 @@ where
 
 	// This will also cache the node version info for calls to foreign API check middleware
 	if let Some(v) = node_client.clone().get_version_info() {
-		if Version::parse(&v.node_version) < Version::parse(MIN_COMPAT_NODE_VERSION) {
+		if Version::parse(&v.node_version).ok() < Version::parse(MIN_COMPAT_NODE_VERSION).ok() {
 			println!("The Grin Node in use (version {}) is outdated and incompatible with this wallet version.", v.node_version);
 			println!(
 				"Please update the node to version {} or later and try again.",
