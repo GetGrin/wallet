@@ -48,4 +48,3 @@ grin_chain = { path = "../grin/chain"}
 
 [dev-dependencies]
 ed25519-dalek = "1.0.0-pre.4"
-remove_dir_all = "0.7"
