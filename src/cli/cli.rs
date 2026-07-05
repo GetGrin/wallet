@@ -276,6 +276,8 @@ impl Completer for EditorHelper {
 }
 
 impl Hinter for EditorHelper {
+	type Hint = String;
+
 	fn hint(&self, line: &str, _pos: usize, _ctx: &Context<'_>) -> Option<String> {
 		let mut contents = STDIN_CONTENTS.lock();
 		*contents = line.into();
