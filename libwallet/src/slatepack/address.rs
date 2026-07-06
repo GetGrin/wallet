@@ -129,7 +129,10 @@ impl TryFrom<&SlatepackAddress> for xDalekPublicKey {
 	fn try_from(addr: &SlatepackAddress) -> Result<Self, Self::Error> {
 		let cep =
 			curve25519_dalek::edwards::CompressedEdwardsY::from_slice(addr.pub_key.as_bytes());
-		let ep = match cep.decompress() {
+		let ep = match cep
+			.map_err(|e| Error::ED25519Key(format!("{}", e)))?
+			.decompress()
+		{
 			Some(p) => p,
 			None => {
 				return Err(Error::ED25519Key(
