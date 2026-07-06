@@ -41,7 +41,6 @@ use crate::{
 	WalletInst, WalletLCProvider,
 };
 
-use ed25519_dalek::PublicKey as DalekPublicKey;
 use ed25519_dalek::SecretKey as DalekSecretKey;
 use ed25519_dalek::Verifier;
 use x25519_dalek::{PublicKey as xPublicKey, StaticSecret};
@@ -1240,18 +1239,23 @@ where
 		return Err(Error::PaymentProof("Invalid sender signature".to_owned()));
 	};
 
-	// for now, simple test as to whether one of the addresses belongs to this wallet
-	let sec_key = address::address_from_derivation_path(&keychain, &parent_key_id, 0)?;
-	let d_skey = match DalekSecretKey::from_bytes(&sec_key.0) {
-		Ok(k) => k,
-		Err(e) => {
-			return Err(Error::ED25519Key(format!("{}", e)));
-		}
-	};
-	let my_address_pubkey: DalekPublicKey = (&d_skey).into();
+	// Test whether one of the addresses belongs to this wallet, ANY of its
+	// derived proof addresses (per-offer indexed), not only index 0.
 
-	let sender_mine = my_address_pubkey == sender_pubkey;
-	let recipient_mine = my_address_pubkey == recipient_pubkey;
+	let sender_mine = address::proof_address_derivation_index(
+		&keychain,
+		&parent_key_id,
+		&sender_pubkey,
+		address::MAX_PROOF_ADDRESS_INDEX,
+	)?
+	.is_some();
+	let recipient_mine = address::proof_address_derivation_index(
+		&keychain,
+		&parent_key_id,
+		&recipient_pubkey,
+		address::MAX_PROOF_ADDRESS_INDEX,
+	)?
+	.is_some();
 
 	Ok((sender_mine, recipient_mine))
 }
