@@ -40,17 +40,18 @@ dependencies = [
 
 [[package]]
 name = "age"
-version = "0.7.2"
+version = "0.8.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "815e87cc8c39227cfff259f9550bd9f1c1a082370eccf4e9a176327fb7f906c9"
+checksum = "caf6575916925dce67e5cc5588066ec50db90be641b5de10e2495d1a4045d55c"
 dependencies = [
  "age-core",
  "base64 0.13.1",
  "bech32 0.8.1",
  "chacha20poly1305",
+ "cipher 0.4.4",
  "cookie-factory",
- "hkdf 0.11.0",
- "hmac 0.11.0",
+ "hkdf",
+ "hmac 0.12.1",
  "i18n-embed",
  "i18n-embed-fl",
  "lazy_static",
@@ -60,6 +61,7 @@ dependencies = [
  "rand 0.8.6",
  "rust-embed",
  "scrypt",
+ "sha2 0.10.9",
  "sha2 0.9.9",
  "subtle",
  "x25519-dalek 1.1.1",
@@ -68,18 +70,19 @@ dependencies = [
 
 [[package]]
 name = "age-core"
-version = "0.7.1"
+version = "0.8.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "70afa630ef12a4fc666277713efbe6da2bc87bb3f3af0f1149415b701362c615"
+checksum = "00a5c8d8a33abc74ad393896a6305351dd159d0e184788f4729e3c80e397fa45"
 dependencies = [
  "base64 0.13.1",
  "chacha20poly1305",
  "cookie-factory",
- "hkdf 0.11.0",
+ "hkdf",
+ "io_tee",
  "nom",
  "rand 0.8.6",
  "secrecy",
- "sha2 0.9.9",
+ "sha2 0.10.9",
 ]
 
 [[package]]
@@ -2887,16 +2890,6 @@ checksum = "7f24254aa9a54b5c858eaee2f5bccdb46aaf0e486a595ed5fd8f86ba55232a70"
 
 [[package]]
 name = "hkdf"
-version = "0.11.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "01706d578d5c281058480e673ae4086a9f4710d8df1ad80a5b03e39ece5f886b"
-dependencies = [
- "digest 0.9.0",
- "hmac 0.11.0",
-]
-
-[[package]]
-name = "hkdf"
 version = "0.12.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "7b5f8eb2ad728638ea2c7d47a21db23b7b58a72ed6a38256b8a1849f15fbbdf7"
@@ -3433,6 +3426,12 @@ checksum = "a4f0c30c76f2f4ccee3fe55a2435f691ca00c0e4bd87abe4f4a851b1d4dac39b"
 dependencies = [
  "rustversion",
 ]
+
+[[package]]
+name = "io_tee"
+version = "0.1.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "4b3f7cef34251886990511df1c61443aa928499d598a9473929ab5a90a527304"
 
 [[package]]
 name = "ipnet"
@@ -5708,11 +5707,11 @@ checksum = "ef703b7cb59335eae2eb93ceb664c0eb7ea6bf567079d843e09420219668e072"
 
 [[package]]
 name = "salsa20"
-version = "0.9.0"
+version = "0.10.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "0c0fbb5f676da676c260ba276a8f43a8dc67cf02d1438423aeb1c677a7212686"
+checksum = "97a22f5af31f73a954c10289c93e8a50cc23d971e80ee446f1f6f7137a088213"
 dependencies = [
- "cipher 0.3.0",
+ "cipher 0.4.4",
 ]
 
 [[package]]
@@ -5780,9 +5779,9 @@ checksum = "94143f37725109f92c262ed2cf5e59bce7498c01bcc1502d7b9afe439a4e9f49"
 
 [[package]]
 name = "scrypt"
-version = "0.8.1"
+version = "0.9.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "e73d6d7c6311ebdbd9184ad6c4447b2f36337e327bda107d3ba9e3c374f9d325"
+checksum = "ba0aaf3911fff0d942c10a49779de7754699810fc7dbe3df515613b2ecc8195a"
 dependencies = [
  "hmac 0.12.1",
  "pbkdf2 0.10.1",
@@ -7823,7 +7822,7 @@ dependencies = [
  "enum_dispatch",
  "futures 0.3.32",
  "futures-util",
- "hkdf 0.12.4",
+ "hkdf",
  "hmac 0.12.1",
  "itertools 0.14.0",
  "nonany",
