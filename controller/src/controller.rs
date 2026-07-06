@@ -26,14 +26,14 @@ use crate::util::{from_hex, static_secp_instance, to_base64, Mutex};
 use futures::channel::oneshot;
 use grin_wallet_api::JsonId;
 use grin_wallet_util::OnionV3Address;
-use hyper::body;
 use hyper::header::HeaderValue;
-use hyper::{Body, Request, Response, StatusCode};
+use hyper::{Request, Response, StatusCode};
 use qr_code::QrCode;
 use serde::{Deserialize, Serialize};
 use serde_json;
 use std::collections::HashMap;
-use std::convert::TryFrom;
+use std::convert::{Infallible, TryFrom};
+use std::io::Cursor;
 use std::net::SocketAddr;
 use std::sync::Arc;
 
@@ -49,6 +49,9 @@ use easy_jsonrpc_mw;
 use easy_jsonrpc_mw::{Handler, MaybeReply};
 use grin_wallet_impls::tor::arti::start_tor_service;
 use grin_wallet_impls::tor::Tor;
+use http_body_util::combinators::BoxBody;
+use http_body_util::{BodyExt, Full};
+use hyper::body::{Bytes, Incoming};
 
 lazy_static! {
 	pub static ref GRIN_OWNER_BASIC_REALM: HeaderValue =
@@ -155,9 +158,7 @@ where
 			let wallet = match wallet {
 				Some(w) => w,
 				None => {
-					return Err(Error::GenericError(format!(
-						"Instantiated wallet or Owner API context must be provided"
-					)))
+					return Err(Error::GenericError("Instantiated wallet or Owner API context must be provided".to_string()))
 				}
 			};
 			f(&mut Owner::new(wallet, None), keychain_mask)?
@@ -553,7 +554,7 @@ impl OwnerV3Helpers {
 		};
 		match err_string {
 			Some(s) => {
-				return (
+				(
 					true,
 					serde_json::json!({
 						"jsonrpc": "2.0",
@@ -569,6 +570,8 @@ impl OwnerV3Helpers {
 		}
 	}
 }
+
+pub type ApiBody = BoxBody<Bytes, Infallible>;
 
 impl<L, C, K> OwnerAPIHandlerV3<L, C, K>
 where
@@ -590,13 +593,13 @@ where
 			wallet,
 			owner_api,
 			shared_key: Arc::new(Mutex::new(None)),
-			keychain_mask: keychain_mask,
+			keychain_mask,
 			running_foreign,
 		}
 	}
 
 	async fn call_api(
-		req: Request<Body>,
+		req: Request<Incoming>,
 		key: Arc<Mutex<Option<SecretKey>>>,
 		mask: Arc<Mutex<Option<SecretKey>>>,
 		running_foreign: bool,
@@ -662,12 +665,12 @@ where
 	}
 
 	async fn handle_post_request(
-		req: Request<Body>,
+		req: Request<Incoming>,
 		key: Arc<Mutex<Option<SecretKey>>>,
 		mask: Arc<Mutex<Option<SecretKey>>>,
 		running_foreign: bool,
 		api: Arc<Owner<L, C, K>>,
-	) -> Result<Response<Body>, Error> {
+	) -> Result<Response<ApiBody>, Error> {
 		let res = Self::call_api(req, key, mask, running_foreign, api).await?;
 		Ok(json_response_pretty(&res))
 	}
@@ -679,7 +682,7 @@ where
 	C: NodeClient + 'static,
 	K: Keychain + 'static,
 {
-	fn post(&self, req: Request<Body>) -> ResponseFuture {
+	fn post(&self, req: Request<Incoming>) -> ResponseFuture {
 		let key = self.shared_key.clone();
 		let mask = self.keychain_mask.clone();
 		let running_foreign = self.running_foreign;
@@ -696,7 +699,7 @@ where
 		})
 	}
 
-	fn options(&self, _req: Request<Body>) -> ResponseFuture {
+	fn options(&self, _req: Request<Incoming>) -> ResponseFuture {
 		Box::pin(async { Ok(create_ok_response("{}")) })
 	}
 }
@@ -739,7 +742,7 @@ where
 	}
 
 	async fn call_api(
-		req: Request<Body>,
+		req: Request<Incoming>,
 		api: Foreign<'static, L, C, K>,
 	) -> Result<serde_json::Value, Error> {
 		let val: serde_json::Value = parse_body(req).await?;
@@ -754,12 +757,12 @@ where
 	}
 
 	async fn handle_post_request(
-		req: Request<Body>,
+		req: Request<Incoming>,
 		mask: Option<SecretKey>,
 		wallet: Arc<Mutex<Box<dyn WalletInst<'static, L, C, K> + 'static>>>,
 		test_mode: bool,
 		tor_config: Option<TorConfig>,
-	) -> Result<Response<Body>, Error> {
+	) -> Result<Response<ApiBody>, Error> {
 		let api = Foreign::new(wallet, mask, Some(check_middleware), test_mode);
 		api.set_tor_config(tor_config);
 		let res = Self::call_api(req, api).await?;
@@ -773,7 +776,7 @@ where
 	C: NodeClient + 'static,
 	K: Keychain + 'static,
 {
-	fn post(&self, req: Request<Body>) -> ResponseFuture {
+	fn post(&self, req: Request<Incoming>) -> ResponseFuture {
 		let mask = self.keychain_mask.lock().clone();
 		let wallet = self.wallet.clone();
 		let test_mode = self.test_mode;
@@ -790,35 +793,24 @@ where
 		})
 	}
 
-	fn options(&self, _req: Request<Body>) -> ResponseFuture {
+	fn options(&self, _req: Request<Incoming>) -> ResponseFuture {
 		Box::pin(async { Ok(create_ok_response("{}")) })
 	}
 }
 
-// Utility to serialize a struct into JSON and produce a sensible Response
-// out of it.
-fn _json_response<T>(s: &T) -> Response<Body>
-where
-	T: Serialize,
-{
-	match serde_json::to_string(s) {
-		Ok(json) => response(StatusCode::OK, json),
-		Err(_) => response(StatusCode::INTERNAL_SERVER_ERROR, ""),
-	}
-}
-
-// pretty-printed version of above
-fn json_response_pretty<T>(s: &T) -> Response<Body>
+/// Utility to serialize a struct into JSON and produce a sensible Response
+/// out of it.
+fn json_response_pretty<T>(s: &T) -> Response<ApiBody>
 where
 	T: Serialize,
 {
 	match serde_json::to_string_pretty(s) {
-		Ok(json) => response(StatusCode::OK, json),
-		Err(_) => response(StatusCode::INTERNAL_SERVER_ERROR, ""),
+		Ok(json) => response(StatusCode::OK, Full::from(json).boxed()),
+		Err(_) => response(StatusCode::INTERNAL_SERVER_ERROR, Full::from("").boxed()),
 	}
 }
 
-fn create_error_response(e: Error) -> Response<Body> {
+fn create_error_response(e: Error) -> Response<ApiBody> {
 	Response::builder()
 		.status(StatusCode::INTERNAL_SERVER_ERROR)
 		.header("access-control-allow-origin", "*")
@@ -826,11 +818,11 @@ fn create_error_response(e: Error) -> Response<Body> {
 			"access-control-allow-headers",
 			"Content-Type, Authorization",
 		)
-		.body(format!("{}", e).into())
+		.body(Full::from(format!("{}", e)).boxed())
 		.unwrap()
 }
 
-fn create_ok_response(json: &str) -> Response<Body> {
+fn create_ok_response(json: &str) -> Response<ApiBody> {
 	Response::builder()
 		.status(StatusCode::OK)
 		.header("access-control-allow-origin", "*")
@@ -839,7 +831,7 @@ fn create_ok_response(json: &str) -> Response<Body> {
 			"Content-Type, Authorization",
 		)
 		.header(hyper::header::CONTENT_TYPE, "application/json")
-		.body(json.to_string().into())
+		.body(Full::from(json.to_string()).boxed())
 		.unwrap()
 }
 
@@ -847,7 +839,7 @@ fn create_ok_response(json: &str) -> Response<Body> {
 ///
 /// Whenever the status code is `StatusCode::OK` the text parameter should be
 /// valid JSON as the content type header will be set to `application/json'
-fn response<T: Into<Body>>(status: StatusCode, text: T) -> Response<Body> {
+fn response<T: Into<ApiBody>>(status: StatusCode, text: T) -> Response<ApiBody> {
 	let mut builder = Response::builder()
 		.status(status)
 		.header("access-control-allow-origin", "*")
@@ -863,14 +855,18 @@ fn response<T: Into<Body>>(status: StatusCode, text: T) -> Response<Body> {
 	builder.body(text.into()).unwrap()
 }
 
-async fn parse_body<T>(req: Request<Body>) -> Result<T, Error>
+async fn parse_body<T>(req: Request<Incoming>) -> Result<T, Error>
 where
 	for<'de> T: Deserialize<'de> + Send + 'static,
 {
-	let body = body::to_bytes(req.into_body())
+	let body_req = req
+		.into_body()
+		.collect()
 		.await
-		.map_err(|_| Error::GenericError("Failed to read request".to_string()))?;
+		.map_err(|e| Error::GenericError(format!("Failed to read request: {}", e)))?;
+	let raw = body_req.to_bytes();
 
-	serde_json::from_reader(&body[..])
+	let cursor = Cursor::new(raw);
+	serde_json::from_reader(cursor)
 		.map_err(|e| Error::GenericError(format!("Invalid request body: {}", e)))
 }
