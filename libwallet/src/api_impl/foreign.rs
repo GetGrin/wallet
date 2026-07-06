@@ -114,11 +114,26 @@ where
 	let excess = ret_slate.calc_excess(keychain.secp())?;
 
 	if let Some(ref mut p) = ret_slate.payment_proof {
+		// The slate may be addressed to ANY of this wallet's derived proof
+		// addresses (per-offer indexed addresses), not only the default
+		// index-0 one. Detect which derivation index the sender paid to and
+		// sign with the MATCHING key — a proof signed by any other key fails
+		// the sender's finalize-time signature check. Index 0 is probed first,
+		// so an ordinary receive costs one derivation exactly as before; an
+		// address outside the scan bound falls back to index 0 (the old
+		// behavior, which the sender's check rejects just as it did).
+		let index = address::proof_address_derivation_index(
+			&keychain,
+			&parent_key_id,
+			&p.receiver_address,
+			address::MAX_PROOF_ADDRESS_INDEX,
+		)?
+		.unwrap_or(0);
 		let sig = tx::create_payment_proof_signature(
 			ret_slate.amount,
 			&excess,
 			p.sender_address,
-			address::address_from_derivation_path(&keychain, &parent_key_id, 0)?,
+			address::address_from_derivation_path(&keychain, &parent_key_id, index)?,
 		)?;
 
 		p.receiver_signature = Some(sig);
