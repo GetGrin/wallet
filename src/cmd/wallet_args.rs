@@ -67,13 +67,13 @@ impl From<std::io::Error> for ParseError {
 	}
 }
 
-fn prompt_password_stdout(prompt: &str) -> ZeroingString {
+fn prompt_password_internal(prompt: &str) -> ZeroingString {
 	ZeroingString::from(rpassword::prompt_password(prompt).unwrap())
 }
 
 pub fn prompt_password(password: &Option<ZeroingString>) -> ZeroingString {
 	match password {
-		None => prompt_password_stdout("Password: "),
+		None => prompt_password_internal("Password: "),
 		Some(p) => p.clone(),
 	}
 }
@@ -82,8 +82,8 @@ fn prompt_password_confirm() -> ZeroingString {
 	let mut first = ZeroingString::from("first");
 	let mut second = ZeroingString::from("second");
 	while first != second {
-		first = prompt_password_stdout("Password: ");
-		second = prompt_password_stdout("Confirm Password: ");
+		first = prompt_password_internal("Password: ");
+		second = prompt_password_internal("Confirm Password: ");
 	}
 	first
 }
