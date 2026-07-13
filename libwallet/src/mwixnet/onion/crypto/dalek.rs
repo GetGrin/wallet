@@ -14,6 +14,7 @@
 
 //! Dalek key wrapper for mwixnet primitives
 
+use ed25519_dalek::Verifier;
 use grin_util::secp::key::SecretKey;
 
 use ed25519_dalek::VerifyingKey;
@@ -117,8 +118,79 @@ impl Writeable for DalekPublicKey {
 	}
 }
 
+/// Encapsulates an ed25519_dalek::Signature and provides (de-)serialization
+#[allow(dead_code)]
+#[derive(Clone, Debug, PartialEq)]
+pub struct DalekSignature(ed25519_dalek::Signature);
+
+impl DalekSignature {
+	/// Convert hex string to DalekSignature.
+	#[allow(dead_code)]
+	pub fn from_hex(hex: &str) -> Result<Self, DalekError> {
+		let bytes = grin_util::from_hex(hex)
+			.map_err(|_| DalekError::HexError(format!("failed to decode {}", hex)))?;
+		let b = <[u8; 64]>::try_from(bytes.as_slice())
+			.map_err(|_| DalekError::HexError(format!("failed to decode {}", hex)))?;
+		let sig = ed25519_dalek::Signature::try_from(b)
+			.map_err(|_| DalekError::HexError(format!("failed to decode {}", hex)))?;
+		Ok(DalekSignature(sig))
+	}
+
+	/// Verifies DalekSignature
+	#[allow(dead_code)]
+	pub fn verify(&self, pk: &DalekPublicKey, msg: &[u8]) -> Result<(), DalekError> {
+		pk.as_ref()
+			.verify(&msg, &self.0)
+			.map_err(|_| DalekError::SigVerifyFailed)
+	}
+}
+
+impl AsRef<ed25519_dalek::Signature> for DalekSignature {
+	fn as_ref(&self) -> &ed25519_dalek::Signature {
+		&self.0
+	}
+}
+
+/// Serializes a DalekSignature to and from hex
+#[cfg(test)]
+pub mod dalek_sig_serde {
+	use super::DalekSignature;
+	use grin_util::ToHex;
+	use serde::de::Error;
+	use serde::{Deserialize, Deserializer, Serializer};
+
+	///
+	pub fn serialize<S>(sig: &DalekSignature, serializer: S) -> Result<S::Ok, S::Error>
+	where
+		S: Serializer,
+	{
+		serializer.serialize_str(&sig.0.to_bytes().to_hex())
+	}
+
+	///
+	pub fn deserialize<'de, D>(deserializer: D) -> Result<DalekSignature, D::Error>
+	where
+		D: Deserializer<'de>,
+	{
+		let str = String::deserialize(deserializer)?;
+		let sig = DalekSignature::from_hex(&str).map_err(|e| Error::custom(e.to_string()))?;
+		Ok(sig)
+	}
+}
+
+/// Dalek signature sign wrapper
+// TODO: This is likely duplicated throughout crate, check
+#[cfg(test)]
+pub fn sign(sk: &SecretKey, message: &[u8]) -> Result<DalekSignature, DalekError> {
+	use ed25519_dalek::{SigningKey, Signer};
+	let secret = SigningKey::from_bytes(&sk.0);
+	let sig = secret.sign(&message);
+	Ok(DalekSignature(sig))
+}
+
 #[cfg(test)]
 mod tests {
+	use rand::Rng;
 	use super::*;
 	use crate::mwixnet::onion::test_util::rand_keypair;
 	use grin_core::ser::{self, ProtocolVersion};
@@ -178,6 +250,51 @@ mod tests {
 		// Test serde with no pk field
 		let none2 = serde_json::from_str::<TestPubKeySerde>("{}").unwrap();
 		assert_eq!(none, none2);
+
+		Ok(())
+	}
+
+	#[derive(Serialize, Deserialize, PartialEq, Clone, Debug)]
+	struct TestSigSerde {
+		#[serde(with = "dalek_sig_serde")]
+		sig: DalekSignature,
+	}
+
+	#[test]
+	fn sig_test() -> Result<(), Box<dyn std::error::Error>> {
+		// Sign a message
+		let (sk, pk) = rand_keypair();
+		let msg: [u8; 16] = rand::thread_rng().gen();
+		let sig = sign(&sk, &msg).unwrap();
+
+		// Verify signature
+		assert!(sig.verify(&pk, &msg).is_ok());
+
+		// Wrong message
+		let wrong_msg: [u8; 16] = rand::thread_rng().gen();
+		assert!(sig.verify(&pk, &wrong_msg).is_err());
+
+		// Wrong pubkey
+		let wrong_pk = rand_keypair().1;
+		assert!(sig.verify(&wrong_pk, &msg).is_err());
+
+		// Test from_hex
+		let sig_from_hex = DalekSignature::from_hex(sig.0.to_bytes().to_hex().as_str()).unwrap();
+		assert_eq!(sig.0, sig_from_hex.0);
+
+		// Test serde (de-)serialization
+		let serde_test = TestSigSerde { sig: sig.clone() };
+		let val = serde_json::to_value(serde_test.clone()).unwrap();
+		if let Value::Object(o) = &val {
+			if let Value::String(s) = o.get("sig").unwrap() {
+				assert_eq!(s, &sig.0.to_bytes().to_hex());
+			} else {
+				panic!("Invalid type");
+			}
+		} else {
+			panic!("Invalid type")
+		}
+		assert_eq!(serde_test, serde_json::from_value(val).unwrap());
 
 		Ok(())
 	}
