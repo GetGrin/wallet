@@ -131,7 +131,8 @@ fn real_main() -> i32 {
 		},
 	};
 
-	//config.members.as_mut().unwrap().wallet.chain_type = Some(chain_type);
+	// Initialize TLS provider.
+	rustls::crypto::ring::default_provider().install_default().expect("Failed to install rustls crypto provider");
 
 	// Load logging config
 	let mut l = config.members.as_mut().unwrap().logging.clone().unwrap();
