@@ -87,19 +87,15 @@ impl TryFrom<&str> for SlatepackAddress {
 	type Error = Error;
 	fn try_from(encoded: &str) -> Result<Self, Self::Error> {
 		let (hrp, data) = bech32::decode(&encoded)?;
-		let bytes = Vec::<u8>::from_base32(&data)?.into_boxed_slice();
-		match bytes.as_array() {
-			None => Err(Error::SlatepackAddress("Wrong encoded data".to_string())),
-			Some(b) => {
-				let pub_key = match edDalekPublicKey::from_bytes(&b) {
-					Ok(k) => k,
-					Err(e) => {
-						return Err(Error::ED25519Key(format!("{}", e)));
-					}
-				};
-				Ok(SlatepackAddress { hrp, pub_key })
+		let bytes = Vec::<u8>::from_base32(&data)?;
+		let b = <&[u8; 32]>::try_from(bytes.as_slice()).map_err(|_| Error::SlatepackAddress("Wrong encoded data".to_string()))?;
+		let pub_key = match edDalekPublicKey::from_bytes(&b) {
+			Ok(k) => k,
+			Err(e) => {
+				return Err(Error::ED25519Key(format!("{}", e)));
 			}
-		}
+		};
+		Ok(SlatepackAddress { hrp, pub_key })
 	}
 }
 

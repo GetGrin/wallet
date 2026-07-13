@@ -49,14 +49,9 @@ impl DalekPublicKey {
 	pub fn from_hex(hex: &str) -> Result<Self, DalekError> {
 		let err = DalekError::HexError(format!("failed to decode {}", hex));
 		let bytes = grin_util::from_hex(hex).map_err(|_| err.clone())?;
-		let bytes = bytes.into_boxed_slice();
-		match bytes.as_array() {
-			None => Err(err),
-			Some(b) => {
-				let pk = VerifyingKey::from_bytes(b).map_err(|_| err)?;
-				Ok(DalekPublicKey(pk))
-			}
-		}
+		let b = <&[u8; 32]>::try_from(bytes.as_slice()).map_err(|_| err.clone())?;
+		let pk = VerifyingKey::from_bytes(b).map_err(|_| err)?;
+		Ok(DalekPublicKey(pk))
 	}
 
 	/// Compute DalekPublicKey from a SecretKey
@@ -109,14 +104,9 @@ pub mod option_dalek_pubkey_serde {
 impl Readable for DalekPublicKey {
 	fn read<R: Reader>(reader: &mut R) -> Result<Self, ser::Error> {
 		let bytes = reader.read_fixed_bytes(32)?;
-		let bytes = bytes.into_boxed_slice();
-		match bytes.as_array() {
-			None => Err(ser::Error::CorruptedData),
-			Some(b) => {
-				let pk = VerifyingKey::from_bytes(b).map_err(|_| ser::Error::CorruptedData)?;
-				Ok(DalekPublicKey(pk))
-			}
-		}
+		let b = <&[u8; 32]>::try_from(bytes.as_slice()).map_err(|_| ser::Error::CorruptedData)?;
+		let pk = VerifyingKey::from_bytes(b).map_err(|_| ser::Error::CorruptedData)?;
+		Ok(DalekPublicKey(pk))
 	}
 }
 

@@ -346,18 +346,12 @@ impl<'a> Writeable for ProofWrapRef<'a> {
 impl Readable for ProofWrap {
 	fn read<R: Reader>(reader: &mut R) -> Result<ProofWrap, grin_ser::Error> {
 		let saddr_bytes = reader.read_fixed_bytes(32)?;
-		let saddr_bytes = saddr_bytes.into_boxed_slice();
-		let saddr = match saddr_bytes.as_array() {
-			None => return Err(grin_ser::Error::CorruptedData),
-			Some(b) => DalekPublicKey::from_bytes(b).map_err(|_| grin_ser::Error::CorruptedData)?,
-		};
+		let saddr_bytes = <&[u8; 32]>::try_from(saddr_bytes.as_slice()).map_err(|_| grin_ser::Error::CorruptedData)?;
+		let saddr = DalekPublicKey::from_bytes(saddr_bytes).map_err(|_| grin_ser::Error::CorruptedData)?;
 
 		let raddr_bytes = reader.read_fixed_bytes(32)?;
-		let raddr_bytes = raddr_bytes.into_boxed_slice();
-		let raddr = match raddr_bytes.as_array() {
-			None => return Err(grin_ser::Error::CorruptedData),
-			Some(b) => DalekPublicKey::from_bytes(b).map_err(|_| grin_ser::Error::CorruptedData)?,
-		};
+		let raddr_bytes = <&[u8; 32]>::try_from(raddr_bytes.as_slice()).map_err(|_| grin_ser::Error::CorruptedData)?;
+		let raddr = DalekPublicKey::from_bytes(raddr_bytes).map_err(|_| grin_ser::Error::CorruptedData)?;
 
 		let rsig = match reader.read_u8()? {
 			0 => None,
@@ -584,8 +578,8 @@ fn slate_v4_serialize_deserialize() {
 	// Include Payment proof, remove coms to mix it up a bit
 	let mut v4 = v4_1_copy;
 	let raw_pubkey_str = "d03c09e9c19bb74aa9ea44e0fe5ae237a9bf40bddf0941064a80913a4459c8bb";
-	let b = from_hex(raw_pubkey_str).unwrap();
-	let b = b.into_boxed_slice();
+	let bytes = from_hex(raw_pubkey_str).unwrap();
+	let b = <&[u8; 32]>::try_from(bytes.as_slice()).unwrap();
 	let d_pkey = DalekPublicKey::from_bytes(b.as_array().unwrap()).unwrap();
 	v4.proof = Some(PaymentInfoV4 {
 		raddr: d_pkey.clone(),

@@ -151,11 +151,8 @@ pub mod dalek_seckey_serde {
 		String::deserialize(deserializer)
 			.and_then(|string| from_hex(&string).map_err(|err| Error::custom(err.to_string())))
 			.and_then(|bytes: Vec<u8>| {
-				let bytes = bytes.into_boxed_slice();
-				match bytes.as_array() {
-					None => Err(Error::custom("Error deserializing secret key")),
-					Some(b) => Ok(DalekSecretKey::from_bytes(b)),
-				}
+				let b = <&[u8; 32]>::try_from(bytes.as_slice()).map_err(|_| Error::custom("Error deserializing secret key"))?;
+				Ok(DalekSecretKey::from_bytes(b))
 			})
 	}
 }
@@ -183,19 +180,16 @@ pub mod dalek_pubkey_serde {
 		String::deserialize(deserializer)
 			.and_then(|string| from_hex(&string).map_err(|err| Error::custom(err.to_string())))
 			.and_then(|bytes: Vec<u8>| {
-				let bytes = bytes.into_boxed_slice();
-				match bytes.as_array() {
-					None => Err(Error::custom("Error deserializing public key")),
-					Some(b) => Ok(match DalekPublicKey::from_bytes(b) {
-						Ok(pk) => pk,
-						Err(e) => return Err(Error::custom(format!("{:?}", e))),
-					}),
-				}
+				let b = <&[u8; 32]>::try_from(bytes.as_slice()).map_err(|_| Error::custom("Error deserializing public key"))?;
+				Ok(match DalekPublicKey::from_bytes(b) {
+					Ok(pk) => pk,
+					Err(e) => return Err(Error::custom(format!("{:?}", e))),
+				})
 			})
 	}
 }
 
-/// Serializes an x25519 PublicKey to and from hex
+/// Serializes a x25519 PublicKey to and from hex
 pub mod dalek_xpubkey_serde {
 	use crate::grin_util::{from_hex, ToHex};
 	use serde::{Deserialize, Deserializer, Serializer};
@@ -250,14 +244,11 @@ pub mod dalek_pubkey_base64 {
 				base64::decode(&string).map_err(|err| Error::custom(err.to_string()))
 			})
 			.and_then(|bytes: Vec<u8>| {
-				let bytes = bytes.into_boxed_slice();
-				match bytes.as_array() {
-					None => Err(Error::custom("Error deserializing public key")),
-					Some(b) => Ok(match DalekPublicKey::from_bytes(b) {
-						Ok(pk) => pk,
-						Err(e) => return Err(Error::custom(format!("{:?}", e))),
-					}),
-				}
+				let b = <&[u8; 32]>::try_from(bytes.as_slice()).map_err(|_| Error::custom("Error deserializing public key"))?;
+				Ok(match DalekPublicKey::from_bytes(b) {
+					Ok(pk) => pk,
+					Err(e) => return Err(Error::custom(format!("{:?}", e))),
+				})
 			})
 	}
 }
