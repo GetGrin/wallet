@@ -47,6 +47,7 @@ use tor_keymgr::{ArtiNativeKeystore, KeyMgrBuilder, KeystoreSelector};
 use tor_llcrypto::pk::ed25519::ExpandedKeypair;
 use tor_rtcompat::tokio::TokioNativeTlsRuntime;
 use tor_rtcompat::{SleepProviderExt, ToplevelBlockOn};
+use crate::tor::config::exp_sec_key_bytes;
 
 // Arti Tokio runtime.
 lazy_static! {
@@ -402,10 +403,7 @@ fn add_service_key(
 
 	let expanded_sk =
 		ExpandedSecretKey::from_bytes(Sha512::default().chain_update(key).finalize().as_ref());
-
-	let mut sk_bytes = [0_u8; 64];
-	sk_bytes[0..32].copy_from_slice(&expanded_sk.scalar.to_bytes());
-	sk_bytes[32..64].copy_from_slice(&expanded_sk.hash_prefix);
+	let sk_bytes = exp_sec_key_bytes(expanded_sk);
 	match ExpandedKeypair::from_secret_key_bytes(sk_bytes) {
 		None => {
 			return Err(Error::TorProcess(

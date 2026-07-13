@@ -92,6 +92,13 @@ impl TorRcConfig {
 	}
 }
 
+pub fn exp_sec_key_bytes(expanded_sk: ExpandedSecretKey) -> [u8; 64] {
+	let mut sk_bytes = [0_u8; 64];
+	sk_bytes[0..32].copy_from_slice(&expanded_sk.scalar.to_bytes());
+	sk_bytes[32..64].copy_from_slice(&expanded_sk.hash_prefix);
+	sk_bytes
+}
+
 pub fn create_onion_service_sec_key_file(
 	os_directory: &str,
 	sec_key: &DalekSecretKey,
@@ -102,9 +109,7 @@ pub fn create_onion_service_sec_key_file(
 	file.write(b"== ed25519v1-secret: type0 ==\0\0\0")
 		.map_err(|_| Error::IO)?;
 	let expanded_skey: ExpandedSecretKey = ExpandedSecretKey::from(sec_key.as_bytes());
-	let mut sk_bytes = [0_u8; 64];
-	sk_bytes[0..32].copy_from_slice(&expanded_skey.scalar.to_bytes());
-	sk_bytes[32..64].copy_from_slice(&expanded_skey.hash_prefix);
+	let sk_bytes = exp_sec_key_bytes(expanded_skey);
 	file.write_all(&sk_bytes).map_err(|_| Error::IO)?;
 	Ok(())
 }
