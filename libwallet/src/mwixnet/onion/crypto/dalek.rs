@@ -190,7 +190,6 @@ pub fn sign(sk: &SecretKey, message: &[u8]) -> Result<DalekSignature, DalekError
 
 #[cfg(test)]
 mod tests {
-	use rand::Rng;
 	use super::*;
 	use crate::mwixnet::onion::test_util::rand_keypair;
 	use grin_core::ser::{self, ProtocolVersion};
@@ -264,14 +263,14 @@ mod tests {
 	fn sig_test() -> Result<(), Box<dyn std::error::Error>> {
 		// Sign a message
 		let (sk, pk) = rand_keypair();
-		let msg: [u8; 16] = rand::thread_rng().gen();
+		let msg: [u8; 16] = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16];
 		let sig = sign(&sk, &msg).unwrap();
 
 		// Verify signature
 		assert!(sig.verify(&pk, &msg).is_ok());
 
 		// Wrong message
-		let wrong_msg: [u8; 16] = rand::thread_rng().gen();
+		let wrong_msg: [u8; 16] = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 17];
 		assert!(sig.verify(&pk, &wrong_msg).is_err());
 
 		// Wrong pubkey
