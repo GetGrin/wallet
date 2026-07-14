@@ -23,7 +23,6 @@ use crate::libwallet::{
 };
 use crate::util::secp::key::SecretKey;
 use crate::util::{from_hex, static_secp_instance, to_base64, Mutex};
-use futures::channel::oneshot;
 use grin_wallet_api::JsonId;
 use grin_wallet_util::OnionV3Address;
 use hyper::header::HeaderValue;
@@ -52,6 +51,7 @@ use grin_wallet_impls::tor::arti::start_tor_service;
 use grin_wallet_impls::tor::Tor;
 use http_body_util::{BodyExt, Full};
 use hyper::body::Incoming;
+use tokio::sync::mpsc;
 
 lazy_static! {
 	pub static ref GRIN_OWNER_BASIC_REALM: HeaderValue =
@@ -247,8 +247,7 @@ where
 			.map_err(|_| Error::GenericError("Router failed to add route".to_string()))?;
 	}
 
-	let api_chan: &'static mut (oneshot::Sender<()>, oneshot::Receiver<()>) =
-		Box::leak(Box::new(oneshot::channel::<()>()));
+	let api_chan: (mpsc::Sender<()>, mpsc::Receiver<()>) = mpsc::channel::<()>(1);
 
 	let mut apis = ApiServer::new();
 	warn!("Starting HTTP Owner API server at {}.", addr);
@@ -306,8 +305,7 @@ where
 		.add_route("/v2/foreign", Arc::new(api_handler_v2))
 		.map_err(|_| Error::GenericError("Router failed to add route".to_string()))?;
 
-	let api_chan: &'static mut (oneshot::Sender<()>, oneshot::Receiver<()>) =
-		Box::leak(Box::new(oneshot::channel::<()>()));
+	let api_chan: (mpsc::Sender<()>, mpsc::Receiver<()>) = mpsc::channel::<()>(1);
 
 	let mut apis = ApiServer::new();
 	warn!("Starting HTTP Foreign listener API server at {}.", addr);

@@ -2553,7 +2553,6 @@ version = "5.4.1"
 dependencies = [
  "easy-jsonrpc-mw",
  "ed25519-dalek",
- "futures 0.3.32",
  "grin_api",
  "grin_chain",
  "grin_core",
@@ -2575,6 +2574,7 @@ dependencies = [
  "serde_json",
  "term 0.6.1",
  "thiserror 1.0.69",
+ "tokio",
  "uuid",
 ]
 
