@@ -151,7 +151,8 @@ pub mod dalek_seckey_serde {
 		String::deserialize(deserializer)
 			.and_then(|string| from_hex(&string).map_err(|err| Error::custom(err.to_string())))
 			.and_then(|bytes: Vec<u8>| {
-				let b = <&[u8; 32]>::try_from(bytes.as_slice()).map_err(|_| Error::custom("Error deserializing secret key"))?;
+				let b = <&[u8; 32]>::try_from(bytes.as_slice())
+					.map_err(|_| Error::custom("Error deserializing secret key"))?;
 				Ok(DalekSecretKey::from_bytes(b))
 			})
 	}
@@ -180,7 +181,8 @@ pub mod dalek_pubkey_serde {
 		String::deserialize(deserializer)
 			.and_then(|string| from_hex(&string).map_err(|err| Error::custom(err.to_string())))
 			.and_then(|bytes: Vec<u8>| {
-				let b = <&[u8; 32]>::try_from(bytes.as_slice()).map_err(|_| Error::custom("Error deserializing public key"))?;
+				let b = <&[u8; 32]>::try_from(bytes.as_slice())
+					.map_err(|_| Error::custom("Error deserializing public key"))?;
 				Ok(match DalekPublicKey::from_bytes(b) {
 					Ok(pk) => pk,
 					Err(e) => return Err(Error::custom(format!("{:?}", e))),
@@ -244,7 +246,8 @@ pub mod dalek_pubkey_base64 {
 				base64::decode(&string).map_err(|err| Error::custom(err.to_string()))
 			})
 			.and_then(|bytes: Vec<u8>| {
-				let b = <&[u8; 32]>::try_from(bytes.as_slice()).map_err(|_| Error::custom("Error deserializing public key"))?;
+				let b = <&[u8; 32]>::try_from(bytes.as_slice())
+					.map_err(|_| Error::custom("Error deserializing public key"))?;
 				Ok(match DalekPublicKey::from_bytes(b) {
 					Ok(pk) => pk,
 					Err(e) => return Err(Error::custom(format!("{:?}", e))),

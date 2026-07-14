@@ -41,7 +41,9 @@ use common::{
 
 #[test]
 fn owner_v3_init_secure() -> Result<(), grin_wallet_controller::Error> {
-	rustls::crypto::ring::default_provider().install_default().expect("Failed to install rustls crypto provider");
+	rustls::crypto::ring::default_provider()
+		.install_default()
+		.expect("Failed to install rustls crypto provider");
 	setup_global_chain_type();
 
 	let test_dir = "target/test_output/owner_v3_init_secure";

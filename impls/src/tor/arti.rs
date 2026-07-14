@@ -12,6 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+use crate::tor::config::exp_sec_key_bytes;
 use crate::tor::{ArtiRuntimeWrapper, Tor};
 use arti_client::config::pt::TransportConfigBuilder;
 use arti_client::config::{BridgeConfigBuilder, TorClientConfigBuilder};
@@ -47,7 +48,6 @@ use tor_keymgr::{ArtiNativeKeystore, KeyMgrBuilder, KeystoreSelector};
 use tor_llcrypto::pk::ed25519::ExpandedKeypair;
 use tor_rtcompat::tokio::TokioNativeTlsRuntime;
 use tor_rtcompat::{SleepProviderExt, ToplevelBlockOn};
-use crate::tor::config::exp_sec_key_bytes;
 
 // Arti Tokio runtime.
 lazy_static! {

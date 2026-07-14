@@ -56,8 +56,7 @@ where
 		} else {
 			println!(
 				"Can not parse node version {}. Minimal compatible node version: {}",
-				v.node_version,
-				MIN_COMPAT_NODE_VERSION
+				v.node_version, MIN_COMPAT_NODE_VERSION
 			);
 			return 1;
 		}

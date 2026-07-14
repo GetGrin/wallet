@@ -346,12 +346,16 @@ impl<'a> Writeable for ProofWrapRef<'a> {
 impl Readable for ProofWrap {
 	fn read<R: Reader>(reader: &mut R) -> Result<ProofWrap, grin_ser::Error> {
 		let saddr_bytes = reader.read_fixed_bytes(32)?;
-		let saddr_bytes = <&[u8; 32]>::try_from(saddr_bytes.as_slice()).map_err(|_| grin_ser::Error::CorruptedData)?;
-		let saddr = DalekPublicKey::from_bytes(saddr_bytes).map_err(|_| grin_ser::Error::CorruptedData)?;
+		let saddr_bytes = <&[u8; 32]>::try_from(saddr_bytes.as_slice())
+			.map_err(|_| grin_ser::Error::CorruptedData)?;
+		let saddr =
+			DalekPublicKey::from_bytes(saddr_bytes).map_err(|_| grin_ser::Error::CorruptedData)?;
 
 		let raddr_bytes = reader.read_fixed_bytes(32)?;
-		let raddr_bytes = <&[u8; 32]>::try_from(raddr_bytes.as_slice()).map_err(|_| grin_ser::Error::CorruptedData)?;
-		let raddr = DalekPublicKey::from_bytes(raddr_bytes).map_err(|_| grin_ser::Error::CorruptedData)?;
+		let raddr_bytes = <&[u8; 32]>::try_from(raddr_bytes.as_slice())
+			.map_err(|_| grin_ser::Error::CorruptedData)?;
+		let raddr =
+			DalekPublicKey::from_bytes(raddr_bytes).map_err(|_| grin_ser::Error::CorruptedData)?;
 
 		let rsig = match reader.read_u8()? {
 			0 => None,

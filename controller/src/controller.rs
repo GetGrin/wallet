@@ -32,7 +32,7 @@ use qr_code::QrCode;
 use serde::{Deserialize, Serialize};
 use serde_json;
 use std::collections::HashMap;
-use std::convert::{Infallible, TryFrom};
+use std::convert::TryFrom;
 use std::io::Cursor;
 use std::net::SocketAddr;
 use std::sync::Arc;
@@ -47,12 +47,11 @@ use crate::apiwallet::{
 };
 use easy_jsonrpc_mw;
 use easy_jsonrpc_mw::{Handler, MaybeReply};
+use grin_api::ApiBody;
 use grin_wallet_impls::tor::arti::start_tor_service;
 use grin_wallet_impls::tor::Tor;
-use http_body_util::combinators::BoxBody;
 use http_body_util::{BodyExt, Full};
-use hyper::body::{Bytes, Incoming};
-use grin_api::ApiBody;
+use hyper::body::Incoming;
 
 lazy_static! {
 	pub static ref GRIN_OWNER_BASIC_REALM: HeaderValue =
@@ -159,7 +158,9 @@ where
 			let wallet = match wallet {
 				Some(w) => w,
 				None => {
-					return Err(Error::GenericError("Instantiated wallet or Owner API context must be provided".to_string()))
+					return Err(Error::GenericError(
+						"Instantiated wallet or Owner API context must be provided".to_string(),
+					))
 				}
 			};
 			f(&mut Owner::new(wallet, None), keychain_mask)?
@@ -554,19 +555,17 @@ impl OwnerV3Helpers {
 			None
 		};
 		match err_string {
-			Some(s) => {
-				(
-					true,
-					serde_json::json!({
-						"jsonrpc": "2.0",
-						"id": val["id"],
-						"error": {
-							"message": s,
-							"code": -32099
-						}
-					}),
-				)
-			}
+			Some(s) => (
+				true,
+				serde_json::json!({
+					"jsonrpc": "2.0",
+					"id": val["id"],
+					"error": {
+						"message": s,
+						"code": -32099
+					}
+				}),
+			),
 			None => (false, val.clone()),
 		}
 	}

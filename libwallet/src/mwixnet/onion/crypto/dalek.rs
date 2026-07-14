@@ -182,7 +182,7 @@ pub mod dalek_sig_serde {
 // TODO: This is likely duplicated throughout crate, check
 #[cfg(test)]
 pub fn sign(sk: &SecretKey, message: &[u8]) -> Result<DalekSignature, DalekError> {
-	use ed25519_dalek::{SigningKey, Signer};
+	use ed25519_dalek::{Signer, SigningKey};
 	let secret = SigningKey::from_bytes(&sk.0);
 	let sig = secret.sign(&message);
 	Ok(DalekSignature(sig))
