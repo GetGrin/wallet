@@ -131,11 +131,6 @@ fn real_main() -> i32 {
 		},
 	};
 
-	// Initialize TLS provider.
-	rustls::crypto::ring::default_provider()
-		.install_default()
-		.expect("Failed to install rustls crypto provider");
-
 	// Load logging config
 	let mut l = config.members.as_mut().unwrap().logging.clone().unwrap();
 	// no logging to stdout if we're running cli
