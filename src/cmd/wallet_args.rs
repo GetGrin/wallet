@@ -67,25 +67,27 @@ impl From<std::io::Error> for ParseError {
 	}
 }
 
-fn prompt_password_internal(prompt: &str) -> ZeroingString {
-	ZeroingString::from(rpassword::prompt_password(prompt).unwrap())
+fn prompt_password_internal(prompt: &str) -> Result<ZeroingString, Error> {
+	Ok(ZeroingString::from(
+		rpassword::prompt_password(prompt).map_err(|e| Error::GenericError(format!("{}", e)))?,
+	))
 }
 
-pub fn prompt_password(password: &Option<ZeroingString>) -> ZeroingString {
+pub fn prompt_password(password: &Option<ZeroingString>) -> Result<ZeroingString, Error> {
 	match password {
-		None => prompt_password_internal("Password: "),
-		Some(p) => p.clone(),
+		None => Ok(prompt_password_internal("Password: ")?),
+		Some(p) => Ok(p.clone()),
 	}
 }
 
-fn prompt_password_confirm() -> ZeroingString {
+fn prompt_password_confirm() -> Result<ZeroingString, Error> {
 	let mut first = ZeroingString::from("first");
 	let mut second = ZeroingString::from("second");
 	while first != second {
-		first = prompt_password_internal("Password: ");
-		second = prompt_password_internal("Confirm Password: ");
+		first = prompt_password_internal("Password: ")?;
+		second = prompt_password_internal("Confirm Password: ")?;
 	}
-	first
+	Ok(first)
 }
 
 fn prompt_recovery_phrase<L, C, K>(
@@ -333,7 +335,7 @@ pub fn parse_init_args<L, C, K>(
 	g_args: &command::GlobalArgs,
 	args: &ArgMatches,
 	_test_mode: bool,
-) -> Result<command::InitArgs, ParseError>
+) -> Result<command::InitArgs, Error>
 where
 	DefaultWalletImpl<C>: WalletInst<'static, L, C, K>,
 	L: WalletLCProvider<'static, C, K>,
@@ -345,7 +347,9 @@ where
 		true => 16,
 	};
 	let recovery_phrase = match args.is_present("recover") {
-		true => Some(prompt_recovery_phrase(wallet)?),
+		true => {
+			Some(prompt_recovery_phrase(wallet).map_err(|e| Error::GenericError(e.to_string()))?)
+		}
 		false => None,
 	};
 
@@ -355,10 +359,11 @@ where
 		println!("Please enter a password for your new wallet");
 	}
 
-	let password = g_args
-		.password
-		.clone()
-		.unwrap_or_else(|| prompt_password_confirm());
+	let password = if let Some(p) = g_args.password.clone() {
+		p
+	} else {
+		prompt_password_confirm()?
+	};
 
 	Ok(command::InitArgs {
 		list_length,
@@ -369,12 +374,10 @@ where
 	})
 }
 
-pub fn parse_recover_args(
-	g_args: &command::GlobalArgs,
-) -> Result<command::RecoverArgs, ParseError>
+pub fn parse_recover_args(g_args: &command::GlobalArgs) -> Result<command::RecoverArgs, Error>
 where
 {
-	let passphrase = prompt_password(&g_args.password);
+	let passphrase = prompt_password(&g_args.password)?;
 	Ok(command::RecoverArgs { passphrase })
 }
 
@@ -1073,7 +1076,7 @@ where
 			let lc = wallet_lock.lc_provider()?;
 			let mask = lc.open_wallet(
 				None,
-				prompt_password(&global_wallet_args.password),
+				prompt_password(&global_wallet_args.password)?,
 				false,
 				false,
 			)?;

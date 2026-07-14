@@ -189,7 +189,7 @@ where
 								let lc = wallet_lock.lc_provider().unwrap();
 								let mask = match lc.open_wallet(
 									None,
-									wallet_args::prompt_password(&global_wallet_args.password),
+									wallet_args::prompt_password(&global_wallet_args.password)?,
 									false,
 									false,
 								) {
