@@ -52,6 +52,7 @@ use grin_wallet_impls::tor::Tor;
 use http_body_util::combinators::BoxBody;
 use http_body_util::{BodyExt, Full};
 use hyper::body::{Bytes, Incoming};
+use grin_api::ApiBody;
 
 lazy_static! {
 	pub static ref GRIN_OWNER_BASIC_REALM: HeaderValue =
@@ -570,8 +571,6 @@ impl OwnerV3Helpers {
 		}
 	}
 }
-
-pub type ApiBody = BoxBody<Bytes, Infallible>;
 
 impl<L, C, K> OwnerAPIHandlerV3<L, C, K>
 where
