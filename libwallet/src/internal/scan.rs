@@ -285,12 +285,14 @@ where
 	Ok((result_vec, last_retrieved_return_index, perc_complete))
 }
 
-fn restore_missing_output<'a, L, C, K>(
+fn restore_missing_outputs<'a, L, C, K>(
 	wallet_inst: Arc<Mutex<Box<dyn WalletInst<'a, L, C, K>>>>,
 	keychain_mask: Option<&SecretKey>,
-	output: OutputResult,
+	outputs: Vec<OutputResult>,
 	found_parents: &mut HashMap<Identifier, u32>,
 	tx_stats: &mut Option<&mut HashMap<Identifier, RestoredTxStats>>,
+	status_send_channel: &Option<Sender<StatusMessage>>,
+	perc_complete: u8,
 ) -> Result<(), Error>
 where
 	L: WalletLCProvider<'a, C, K>,
@@ -299,71 +301,86 @@ where
 {
 	wallet_lock!(wallet_inst, w);
 
-	let commit = w.calc_commit_for_cache(keychain_mask, output.value, &output.key_id)?;
+	let keychain = w.keychain(keychain_mask)?;
 	let mut batch = w.batch(keychain_mask)?;
+	for output in outputs.iter() {
+		let msg = format!(
+			"Confirmed output for {} with ID {} ({:?}, index {}) exists in UTXO set but not in wallet. \
+				 Restoring.",
+			output.value, output.key_id, output.commit, output.mmr_index
+		);
+		if let Some(ref s) = status_send_channel {
+			let _ = s.send(StatusMessage::Scanning(msg, perc_complete));
+		}
 
-	let parent_key_id = output.key_id.parent_path();
-	if !found_parents.contains_key(&parent_key_id) {
-		found_parents.insert(parent_key_id.clone(), 0);
-		if let Some(ref mut s) = tx_stats {
+		let commit = keychain
+			.commit(output.value, &output.key_id, SwitchCommitmentType::Regular)?
+			.0
+			.to_vec()
+			.to_hex();
+
+		let parent_key_id = output.key_id.parent_path();
+		if !found_parents.contains_key(&parent_key_id) {
+			found_parents.insert(parent_key_id.clone(), 0);
+			if let Some(ref mut s) = tx_stats {
+				s.insert(
+					parent_key_id.clone(),
+					RestoredTxStats {
+						log_id: batch.next_tx_log_id(&parent_key_id)?,
+						amount_credited: 0,
+						num_outputs: 0,
+					},
+				);
+			}
+		}
+
+		let log_id = if tx_stats.is_none() || output.is_coinbase {
+			let log_id = batch.next_tx_log_id(&parent_key_id)?;
+			let entry_type = match output.is_coinbase {
+				true => TxLogEntryType::ConfirmedCoinbase,
+				false => TxLogEntryType::TxReceived,
+			};
+			let mut t = TxLogEntry::new(parent_key_id.clone(), entry_type, log_id);
+			t.confirmed = true;
+			t.amount_credited = output.value;
+			t.num_outputs = 1;
+			t.update_confirmation_ts();
+			batch.save_tx_log_entry(t, &parent_key_id)?;
+			log_id
+		} else if let Some(ref mut s) = tx_stats {
+			let ts = s.get(&parent_key_id).unwrap().clone();
 			s.insert(
 				parent_key_id.clone(),
 				RestoredTxStats {
-					log_id: batch.next_tx_log_id(&parent_key_id)?,
-					amount_credited: 0,
-					num_outputs: 0,
+					log_id: ts.log_id,
+					amount_credited: ts.amount_credited + output.value,
+					num_outputs: ts.num_outputs + 1,
 				},
 			);
+			ts.log_id
+		} else {
+			0
+		};
+
+		let _ = batch.save(OutputData {
+			root_key_id: parent_key_id.clone(),
+			key_id: output.key_id.clone(),
+			n_child: output.n_child,
+			mmr_index: Some(output.mmr_index),
+			commit: Some(commit),
+			value: output.value,
+			status: OutputStatus::Unspent,
+			height: output.height,
+			lock_height: output.lock_height,
+			is_coinbase: output.is_coinbase,
+			tx_log_entry: Some(log_id),
+		});
+
+		let max_child_index = *found_parents.get(&parent_key_id).unwrap();
+		if output.n_child >= max_child_index {
+			found_parents.insert(parent_key_id, output.n_child);
 		}
 	}
-
-	let log_id = if tx_stats.is_none() || output.is_coinbase {
-		let log_id = batch.next_tx_log_id(&parent_key_id)?;
-		let entry_type = match output.is_coinbase {
-			true => TxLogEntryType::ConfirmedCoinbase,
-			false => TxLogEntryType::TxReceived,
-		};
-		let mut t = TxLogEntry::new(parent_key_id.clone(), entry_type, log_id);
-		t.confirmed = true;
-		t.amount_credited = output.value;
-		t.num_outputs = 1;
-		t.update_confirmation_ts();
-		batch.save_tx_log_entry(t, &parent_key_id)?;
-		log_id
-	} else if let Some(ref mut s) = tx_stats {
-		let ts = s.get(&parent_key_id).unwrap().clone();
-		s.insert(
-			parent_key_id.clone(),
-			RestoredTxStats {
-				log_id: ts.log_id,
-				amount_credited: ts.amount_credited + output.value,
-				num_outputs: ts.num_outputs + 1,
-			},
-		);
-		ts.log_id
-	} else {
-		0
-	};
-
-	let _ = batch.save(OutputData {
-		root_key_id: parent_key_id.clone(),
-		key_id: output.key_id,
-		n_child: output.n_child,
-		mmr_index: Some(output.mmr_index),
-		commit: commit,
-		value: output.value,
-		status: OutputStatus::Unspent,
-		height: output.height,
-		lock_height: output.lock_height,
-		is_coinbase: output.is_coinbase,
-		tx_log_entry: Some(log_id),
-	});
-
-	let max_child_index = *found_parents.get(&parent_key_id).unwrap();
-	if output.n_child >= max_child_index {
-		found_parents.insert(parent_key_id, output.n_child);
-	}
-
 	batch.commit()?;
 	Ok(())
 }
@@ -581,23 +598,15 @@ where
 	let mut found_parents: HashMap<Identifier, u32> = HashMap::new();
 
 	// Restore missing outputs, adding transaction for it back to the log
-	for m in missing_outs.into_iter() {
-		let msg = format!(
-				"Confirmed output for {} with ID {} ({:?}, index {}) exists in UTXO set but not in wallet. \
-				 Restoring.",
-				m.value, m.key_id, m.commit, m.mmr_index
-			);
-		if let Some(ref s) = status_send_channel {
-			let _ = s.send(StatusMessage::Scanning(msg, perc_complete));
-		}
-		restore_missing_output(
-			wallet_inst.clone(),
-			keychain_mask,
-			m,
-			&mut found_parents,
-			&mut None,
-		)?;
-	}
+	restore_missing_outputs(
+		wallet_inst.clone(),
+		keychain_mask,
+		missing_outs,
+		&mut found_parents,
+		&mut None,
+		status_send_channel,
+		perc_complete,
+	)?;
 
 	if delete_unconfirmed {
 		// Unlock locked outputs
