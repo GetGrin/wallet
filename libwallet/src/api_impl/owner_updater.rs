@@ -58,6 +58,7 @@ pub fn start_updater_log_thread(
 	let _ = thread::Builder::new()
 		.name("wallet-updater-status".to_string())
 		.spawn(move || {
+			let mut last_scan_percent = 0;
 			while let Ok(m) = rx.recv() {
 				// save to our message queue to be read by other consumers
 				{
@@ -72,8 +73,11 @@ pub fn start_updater_log_thread(
 					StatusMessage::UpdatingTransactions(s) => debug!("{}", s),
 					StatusMessage::FullScanWarn(s) => warn!("{}", s),
 					StatusMessage::Scanning(s, m) => {
-						debug!("{}", s);
-						warn!("Scanning - {}% complete", m);
+						if last_scan_percent < m {
+							debug!("{}", s);
+							warn!("Scanning - {}% complete", m);
+							last_scan_percent = m;
+						}
 					}
 					StatusMessage::ScanningComplete(s) => warn!("{}", s),
 					StatusMessage::UpdateWarning(s) => warn!("{}", s),
