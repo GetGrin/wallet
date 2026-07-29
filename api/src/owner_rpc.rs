@@ -1123,54 +1123,54 @@ pub trait OwnerRpc {
 	fn node_height(&self, token: Token) -> Result<NodeHeightResult, Error>;
 
 	/**
-		Initializes the secure JSON-RPC API. This function must be called and a shared key
-		established before any other OwnerAPI JSON-RPC function can be called.
+	Initializes the secure JSON-RPC API. This function must be called and a shared key
+	established before any other OwnerAPI JSON-RPC function can be called.
 
-		The shared key will be derived using ECDH with the provided public key on the secp256k1 curve. This
-		function will return its public key used in the derivation, which the caller should multiply by its
-		private key to derive the shared key.
+	The shared key will be derived using ECDH with the provided public key on the secp256k1 curve. This
+	function will return its public key used in the derivation, which the caller should multiply by its
+	private key to derive the shared key.
 
-		Once the key is established, all further requests and responses are encrypted and decrypted with the
-		following parameters:
-		* AES-256 in GCM mode with 128-bit tags and 96 bit nonces
-		* 12 byte nonce which must be included in each request/response to use on the decrypting side
-		* Empty vector for additional data
-		* Suffix length = AES-256 GCM mode tag length = 16 bytes
-		*
+	Once the key is established, all further requests and responses are encrypted and decrypted with the
+	following parameters:
+	* AES-256 in GCM mode with 128-bit tags and 96 bit nonces
+	* 12 byte nonce which must be included in each request/response to use on the decrypting side
+	* Empty vector for additional data
+	* Suffix length = AES-256 GCM mode tag length = 16 bytes
+	*
 
-		Fully-formed JSON-RPC requests (as documented) should be encrypted using these parameters, encoded
-		into base64 and included with the one-time nonce in a request for the `encrypted_request_v3` method
-		as follows:
+	Fully-formed JSON-RPC requests (as documented) should be encrypted using these parameters, encoded
+	into base64 and included with the one-time nonce in a request for the `encrypted_request_v3` method
+	as follows:
 
-		```
-		# let s = r#"
-		{
-			 "jsonrpc": "2.0",
-			 "method": "encrypted_request_v3",
-			 "id": "1",
-			 "params": {
-					"nonce": "ef32...",
-					"body_enc": "e0bcd..."
-			 }
-		}
-		# "#;
-		```
+	```
+	# let s = r#"
+	{
+		 "jsonrpc": "2.0",
+		 "method": "encrypted_request_v3",
+		 "id": "1",
+		 "params": {
+				"nonce": "ef32...",
+				"body_enc": "e0bcd..."
+		 }
+	}
+	# "#;
+	```
 
-		With a typical response being:
+	With a typical response being:
 
-		```
-		# let s = r#"{
-		{
-			 "jsonrpc": "2.0",
-			 "method": "encrypted_response_v3",
-			 "id": "1",
-			 "Ok": {
-					"nonce": "340b...",
-					"body_enc": "3f09c..."
-			 }
-		}
-		# }"#;
-		```
+	```
+	# let s = r#"{
+	{
+		 "jsonrpc": "2.0",
+		 "method": "encrypted_response_v3",
+		 "id": "1",
+		 "Ok": {
+				"nonce": "340b...",
+				"body_enc": "3f09c..."
+		 }
+	}
+	# }"#;
+	```
 
 	*/
 
@@ -2503,7 +2503,7 @@ pub fn run_doctest_owner(
 
 	util::init_test_logger();
 	let _ = fs::remove_dir_all(test_dir);
-	global::set_local_chain_type(ChainTypes::AutomatedTesting);
+	global::set_global_chain_type(ChainTypes::AutomatedTesting);
 
 	let _ = fs::create_dir_all(test_dir);
 	let config = initial_setup_wallet(

@@ -24,7 +24,7 @@ use std::sync::Arc;
 use std::{env, fs};
 use util::{Mutex, ZeroingString};
 
-use grin_core::global::{self, ChainTypes};
+use grin_core::global::{self, ChainTypes, GLOBAL_CHAIN_TYPE};
 use grin_keychain::ExtKeychain;
 use grin_util::{from_hex, static_secp_instance};
 use grin_wallet_api::{EncryptedRequest, EncryptedResponse, JsonId};
@@ -142,7 +142,9 @@ pub fn setup(test_dir: &str) {
 /// leaks across multiple tests and will likely have unintended consequences.
 #[allow(dead_code)]
 pub fn setup_global_chain_type() {
-	global::init_global_chain_type(ChainTypes::AutomatedTesting);
+	if !GLOBAL_CHAIN_TYPE.is_init() {
+		global::init_global_chain_type(ChainTypes::AutomatedTesting);
+	}
 }
 
 /// Create a wallet config file in the given current directory
