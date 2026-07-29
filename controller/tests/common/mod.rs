@@ -22,6 +22,7 @@ use grin_util as util;
 
 use self::core::global;
 use self::core::global::ChainTypes;
+use self::core::global::GLOBAL_CHAIN_TYPE;
 use self::keychain::ExtKeychain;
 use self::libwallet::WalletInst;
 use impls::test_framework::{LocalWalletClient, WalletProxy};
@@ -83,7 +84,7 @@ pub fn clean_output_dir(test_dir: &str) {
 pub fn setup(test_dir: &str) {
 	util::init_test_logger();
 	clean_output_dir(test_dir);
-	global::set_local_chain_type(ChainTypes::AutomatedTesting);
+	setup_global_chain_type();
 }
 
 /// Some tests require the global chain_type to be configured due to threads being spawned internally.
@@ -91,7 +92,9 @@ pub fn setup(test_dir: &str) {
 /// leaks across multiple tests and will likely have unintended consequences.
 #[allow(dead_code)]
 pub fn setup_global_chain_type() {
-	global::init_global_chain_type(global::ChainTypes::AutomatedTesting);
+	if !GLOBAL_CHAIN_TYPE.is_init() {
+		global::init_global_chain_type(ChainTypes::AutomatedTesting);
+	}
 }
 
 pub fn create_wallet_proxy(
