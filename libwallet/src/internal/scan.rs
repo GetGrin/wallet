@@ -302,7 +302,7 @@ where
 {
 	wallet_lock!(wallet_inst, w);
 
-	for o_chunks in outputs.chunks(MISSING_OUTPUTS_BATCH_SIZE).into_iter() {
+	for o_chunks in outputs.chunks(MISSING_OUTPUTS_BATCH_SIZE) {
 		let mut batch = w.batch(keychain_mask)?;
 		for output in o_chunks {
 			let msg = format!(
