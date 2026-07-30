@@ -68,10 +68,15 @@ where
 	let builder = proof::ProofBuilder::new(keychain);
 	let legacy_version = HeaderVersion(1);
 
+	let chain_type = global::get_chain_type();
+
 	let identified = outputs
 		.par_iter()
 		.map(
 			|output| -> Result<Option<(OutputResult, SwitchCommitmentType)>, Error> {
+				// set chain type for thread
+				global::set_local_chain_type(chain_type);
+
 				let (commit, proof, is_coinbase, height, mmr_index) = output;
 				// attempt to unwind message from the RP and get a value
 				// will fail if it's not ours
