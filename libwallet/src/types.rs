@@ -25,7 +25,7 @@ use crate::grin_core::{global, ser};
 use crate::grin_keychain::{Identifier, Keychain};
 use crate::grin_util::logger::LoggingConfig;
 use crate::grin_util::secp::key::{PublicKey, SecretKey};
-use crate::grin_util::secp::{self, pedersen, Secp256k1};
+use crate::grin_util::secp::{pedersen, Secp256k1};
 use crate::grin_util::{ToHex, ZeroingString};
 use crate::slate_versions::ser as dalek_ser;
 use crate::{InitTxArgs, SlateState, WalletBackend};
@@ -37,8 +37,8 @@ use rand::thread_rng;
 use serde;
 use serde_json;
 use std::collections::HashMap;
-use std::fmt;
 use std::time::Duration;
+use std::{cmp, fmt};
 use uuid::Uuid;
 
 /// Combined trait to allow dynamic wallet dispatch
@@ -396,7 +396,7 @@ pub struct Context {
 impl Context {
 	/// Create a new context with defaults
 	pub fn new(
-		secp: &secp::Secp256k1,
+		secp: &Secp256k1,
 		parent_key_id: &Identifier,
 		use_test_rng: bool,
 		is_initiator: bool,
@@ -418,7 +418,7 @@ impl Context {
 
 	/// Create a new context with a specific excess
 	pub fn with_excess(
-		secp: &secp::Secp256k1,
+		secp: &Secp256k1,
 		sec_key: SecretKey,
 		parent_key_id: &Identifier,
 		use_test_rng: bool,
@@ -490,7 +490,7 @@ impl ser::Writeable for Context {
 
 impl ser::Readable for Context {
 	fn read<R: ser::Reader>(reader: &mut R) -> Result<Context, ser::Error> {
-		let data = reader.read_bytes_len_prefix()?;
+		let data = read_bytes_len_prefix(reader)?;
 		serde_json::from_slice(&data[..]).map_err(|_| ser::Error::CorruptedData)
 	}
 }
@@ -679,7 +679,7 @@ impl ser::Writeable for TxLogEntry {
 
 impl ser::Readable for TxLogEntry {
 	fn read<R: ser::Reader>(reader: &mut R) -> Result<TxLogEntry, ser::Error> {
-		let data = reader.read_bytes_len_prefix()?;
+		let data = read_bytes_len_prefix(reader)?;
 		serde_json::from_slice(&data[..]).map_err(|_| ser::Error::CorruptedData)
 	}
 }
@@ -752,7 +752,7 @@ impl ser::Writeable for StoredProofInfo {
 
 impl ser::Readable for StoredProofInfo {
 	fn read<R: ser::Reader>(reader: &mut R) -> Result<StoredProofInfo, ser::Error> {
-		let data = reader.read_bytes_len_prefix()?;
+		let data = read_bytes_len_prefix(reader)?;
 		serde_json::from_slice(&data[..]).map_err(|_| ser::Error::CorruptedData)
 	}
 }
@@ -774,7 +774,7 @@ impl ser::Writeable for AcctPathMapping {
 
 impl ser::Readable for AcctPathMapping {
 	fn read<R: ser::Reader>(reader: &mut R) -> Result<AcctPathMapping, ser::Error> {
-		let data = reader.read_bytes_len_prefix()?;
+		let data = read_bytes_len_prefix(reader)?;
 		serde_json::from_slice(&data[..]).map_err(|_| ser::Error::CorruptedData)
 	}
 }
@@ -807,7 +807,7 @@ impl ser::Writeable for ScannedBlockInfo {
 
 impl ser::Readable for ScannedBlockInfo {
 	fn read<R: ser::Reader>(reader: &mut R) -> Result<ScannedBlockInfo, ser::Error> {
-		let data = reader.read_bytes_len_prefix()?;
+		let data = read_bytes_len_prefix(reader)?;
 		serde_json::from_slice(&data[..]).map_err(|_| ser::Error::CorruptedData)
 	}
 }
@@ -844,7 +844,7 @@ impl ser::Writeable for WalletInitStatus {
 
 impl ser::Readable for WalletInitStatus {
 	fn read<R: ser::Reader>(reader: &mut R) -> Result<WalletInitStatus, ser::Error> {
-		let data = reader.read_bytes_len_prefix()?;
+		let data = read_bytes_len_prefix(reader)?;
 		serde_json::from_slice(&data[..]).map_err(|_| ser::Error::CorruptedData)
 	}
 }
@@ -886,6 +886,22 @@ impl ViewWalletOutputResult {
 			1 + (tip_height - self.height)
 		}
 	}
+}
+
+fn read_bytes_len_prefix<R: ser::Reader>(reader: &mut R) -> Result<Vec<u8>, ser::Error> {
+	let mut len = reader.read_u64()? as usize;
+	let limit = reader.read_limit().unwrap();
+	let mut data = vec![];
+	loop {
+		if len == 0 {
+			break;
+		}
+		let read_size = cmp::min(len, limit);
+		let read_data = reader.read_fixed_bytes(read_size)?;
+		data.extend_from_slice(&read_data);
+		len -= read_size;
+	}
+	Ok(data)
 }
 
 /// Serializes an Option<Duration> to and from a string
