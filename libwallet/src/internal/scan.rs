@@ -285,7 +285,7 @@ where
 	Ok((result_vec, last_retrieved_return_index, perc_complete))
 }
 
-const MISSING_OUTPUTS_BATCH_SIZE: usize = 10000;
+const MISSING_OUTPUTS_BATCH_SIZE: usize = 1000;
 
 fn restore_missing_outputs<'a, L, C, K>(
 	wallet_inst: Arc<Mutex<Box<dyn WalletInst<'a, L, C, K>>>>,
