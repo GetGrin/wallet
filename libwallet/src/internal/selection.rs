@@ -685,8 +685,11 @@ where
 	slate.add_participant_info(&keychain, &context, None)?;
 
 	let mut parts = vec![];
-	for (id, _, value) in &context.get_inputs() {
-		let input = wallet.iter()?.find(|out| out.key_id == *id);
+	for (id, mmr_index, value) in &context.get_inputs() {
+		let input = match wallet.get(id, mmr_index) {
+			Ok(o) => Some(o),
+			Err(_) => wallet.iter()?.find(|out| out.key_id == *id),
+		};
 		if let Some(i) = input {
 			if i.is_coinbase {
 				parts.push(build::coinbase_input(*value, i.key_id.clone()));
