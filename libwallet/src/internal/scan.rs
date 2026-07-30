@@ -300,9 +300,8 @@ where
 	C: NodeClient + 'a,
 	K: Keychain + 'a,
 {
-	wallet_lock!(wallet_inst, w);
-
 	for o_chunks in outputs.chunks(MISSING_OUTPUTS_BATCH_SIZE) {
+		wallet_lock!(wallet_inst, w);
 		let mut batch = w.batch(keychain_mask)?;
 		for output in o_chunks {
 			let msg = format!(
