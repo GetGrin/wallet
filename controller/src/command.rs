@@ -351,9 +351,9 @@ where
 
 	let mut slate = Slate::blank(2, false);
 	let mut amount = args.amount;
+	let (_, wallet_info) =
+		owner_api.retrieve_summary_info(keychain_mask, true, args.minimum_confirmations)?;
 	if args.use_max_amount {
-		let (_, wallet_info) =
-			owner_api.retrieve_summary_info(keychain_mask, true, args.minimum_confirmations)?;
 		amount = wallet_info.amount_currently_spendable;
 	}
 	if args.estimate_selection_strategies {
@@ -926,6 +926,9 @@ where
 		.map(SlatepackAddress::try_from)
 		.transpose()?;
 	let mut slate = args.slate.clone();
+
+	// Refresh wallet state from node.
+	owner_api.retrieve_summary_info(keychain_mask, true, args.minimum_confirmations)?;
 
 	if args.estimate_selection_strategies {
 		let strategies = vec!["smallest", "all"]
