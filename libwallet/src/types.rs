@@ -890,18 +890,22 @@ impl ViewWalletOutputResult {
 
 fn read_bytes_len_prefix<R: ser::Reader>(reader: &mut R) -> Result<Vec<u8>, ser::Error> {
 	let mut len = reader.read_u64()? as usize;
-	let limit = reader.read_limit().unwrap();
-	let mut data = vec![];
-	loop {
-		if len == 0 {
-			break;
+	match reader.read_limit() {
+		None => reader.read_bytes_len_prefix(),
+		Some(limit) => {
+			let mut data = vec![];
+			loop {
+				if len == 0 {
+					break;
+				}
+				let read_size = cmp::min(len, limit);
+				let read_data = reader.read_fixed_bytes(read_size)?;
+				data.extend_from_slice(&read_data);
+				len -= read_size;
+			}
+			Ok(data)
 		}
-		let read_size = cmp::min(len, limit);
-		let read_data = reader.read_fixed_bytes(read_size)?;
-		data.extend_from_slice(&read_data);
-		len -= read_size;
 	}
-	Ok(data)
 }
 
 /// Serializes an Option<Duration> to and from a string
