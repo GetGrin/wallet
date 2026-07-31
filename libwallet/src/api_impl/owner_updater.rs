@@ -79,7 +79,10 @@ pub fn start_updater_log_thread(
 							last_scan_percent = m;
 						}
 					}
-					StatusMessage::ScanningComplete(s) => warn!("{}", s),
+					StatusMessage::ScanningComplete(s) => {
+						warn!("{}", s);
+						last_scan_percent = 0;
+					}
 					StatusMessage::UpdateWarning(s) => warn!("{}", s),
 				}
 			}
