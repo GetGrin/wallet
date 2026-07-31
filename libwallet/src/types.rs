@@ -945,6 +945,8 @@ pub mod option_duration_as_secs {
 #[cfg(test)]
 mod tests {
 	use super::*;
+	use grin_core::ser::{DeserializationMode, ProtocolVersion};
+	use grin_keychain::{ExtKeychain, ExtKeychainPath};
 	use serde_json::Value;
 
 	#[derive(Serialize, Deserialize, PartialEq, Clone, Debug)]
@@ -985,5 +987,26 @@ mod tests {
 
 		let none2 = serde_json::from_str::<TestSer>("{}").unwrap();
 		assert_eq!(none, none2);
+	}
+
+	#[test]
+	fn big_context_read() {
+		let parent = ExtKeychainPath::new(1, 1, 0, 0, 0).to_identifier();
+		let sender_keychain = ExtKeychain::from_random_seed(true).unwrap();
+
+		let mut context = Context::new(sender_keychain.secp(), &parent, false, true);
+		for i in 0..3000 {
+			let key_id = ExtKeychain::derive_key_id(1, 1, i, 0, 0);
+			context.add_output(&key_id, &None, i as u64);
+		}
+		let ser_value = ser::ser_vec(&context, ProtocolVersion(3)).unwrap();
+		let mut value = ser_value.as_slice();
+		assert!(value.len() > 100_000);
+		let context = ser::deserialize::<Context, &[u8]>(
+			&mut value,
+			ProtocolVersion(3),
+			DeserializationMode::Full,
+		);
+		assert!(context.is_ok());
 	}
 }
