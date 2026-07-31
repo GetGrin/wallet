@@ -891,8 +891,11 @@ impl ViewWalletOutputResult {
 fn read_bytes_len_prefix<R: ser::Reader>(reader: &mut R) -> Result<Vec<u8>, ser::Error> {
 	let mut len = reader.read_u64()? as usize;
 	match reader.read_limit() {
-		None => reader.read_bytes_len_prefix(),
+		None => reader.read_fixed_bytes(len),
 		Some(limit) => {
+			if limit == 0 {
+				return reader.read_fixed_bytes(len);
+			}
 			let mut data = vec![];
 			loop {
 				if len == 0 {
