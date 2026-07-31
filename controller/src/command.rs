@@ -351,10 +351,13 @@ where
 
 	let mut slate = Slate::blank(2, false);
 	let mut amount = args.amount;
-	let (_, wallet_info) =
+	let (info_updated, wallet_info) =
 		owner_api.retrieve_summary_info(keychain_mask, true, args.minimum_confirmations)?;
 	if args.use_max_amount {
 		amount = wallet_info.amount_currently_spendable;
+	}
+	if !info_updated {
+		warn!("Unable to contact Node to update wallet info");
 	}
 	if args.estimate_selection_strategies {
 		let strategies = vec!["smallest", "all"]
@@ -928,7 +931,11 @@ where
 	let mut slate = args.slate.clone();
 
 	// Refresh wallet state from node.
-	owner_api.retrieve_summary_info(keychain_mask, true, args.minimum_confirmations)?;
+	let (info_updated, _) =
+		owner_api.retrieve_summary_info(keychain_mask, true, args.minimum_confirmations)?;
+	if !info_updated {
+		warn!("Unable to contact Node to update wallet info");
+	}
 
 	if args.estimate_selection_strategies {
 		let strategies = vec!["smallest", "all"]
