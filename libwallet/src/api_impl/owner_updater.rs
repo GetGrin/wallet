@@ -73,6 +73,9 @@ pub fn start_updater_log_thread(
 					StatusMessage::UpdatingTransactions(s) => debug!("{}", s),
 					StatusMessage::FullScanWarn(s) => warn!("{}", s),
 					StatusMessage::Scanning(s, m) => {
+						if m == 0 {
+							last_scan_percent = 0;
+						}
 						debug!("{}", s);
 						if last_scan_percent < m {
 							warn!("Scanning - {}% complete", m);
