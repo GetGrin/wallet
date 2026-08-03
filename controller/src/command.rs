@@ -357,7 +357,12 @@ where
 		amount = wallet_info.amount_currently_spendable;
 	}
 	if !info_updated {
-		warn!("Wallet info update was skipped");
+		let reason = if owner_api.updater_running.load(Ordering::SeqCst) {
+			"the updater is running"
+		} else {
+			"node connection error"
+		};
+		warn!("Wallet info update was skipped {}", reason);
 	}
 	if args.estimate_selection_strategies {
 		let strategies = vec!["smallest", "all"]
@@ -973,7 +978,12 @@ where
 	let (info_updated, _) =
 		owner_api.retrieve_summary_info(keychain_mask, true, args.minimum_confirmations)?;
 	if !info_updated {
-		warn!("Wallet info update was skipped");
+		let reason = if owner_api.updater_running.load(Ordering::SeqCst) {
+			"the updater is running"
+		} else {
+			"node connection error"
+		};
+		warn!("Wallet info update was skipped: {}", reason);
 	}
 
 	if args.estimate_selection_strategies {
