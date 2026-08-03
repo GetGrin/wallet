@@ -478,6 +478,7 @@ pub trait OwnerRpc {
 					"max_outputs": 500,
 					"num_change_outputs": 1,
 					"selection_strategy_is_use_all": true,
+					"refresh_outputs_from_node": true,
 					"target_slate_version": null,
 					"payment_proof_recipient_address": "tgrin1xtxavwfgs48ckf3gk8wwgcndmn0nt4tvkl8a7ltyejjcy2mc6nfs9gm2lp",
 					"ttl_blocks": null,
