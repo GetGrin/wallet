@@ -461,62 +461,62 @@ pub trait OwnerRpc {
 	) -> Result<(bool, WalletInfo), Error>;
 
 	/**
-		;Networked version of [Owner::init_send_tx](struct.Owner.html#method.init_send_tx).
-	z
-		```
-			# grin_wallet_api::doctest_helper_json_rpc_owner_assert_response!(
-			# r#"
-			{
-				"jsonrpc": "2.0",
-				"method": "init_send_tx",
-				"params": {
-					"token": "d202964900000000d302964900000000d402964900000000d502964900000000",
-					"args": {
-						"src_acct_name": null,
-						"amount": "6000000000",
-						"minimum_confirmations": 2,
-						"max_outputs": 500,
-						"num_change_outputs": 1,
-						"selection_strategy_is_use_all": true,
-						"refresh_outputs_from_node": true,
-						"target_slate_version": null,
-						"payment_proof_recipient_address": "tgrin1xtxavwfgs48ckf3gk8wwgcndmn0nt4tvkl8a7ltyejjcy2mc6nfs9gm2lp",
-						"ttl_blocks": null,
-						"send_args": null
-					}
-				},
-				"id": 1
-			}
-			# "#
-			# ,
-			# r#"
-			{
-			"id": 1,
-				"jsonrpc": "2.0",
-				"result": {
-					"Ok": {
-						"amt": "6000000000",
-						"fee": "23000000",
-						"id": "0436430c-2b02-624c-2032-570501212b00",
-						"proof": {
-							"raddr": "32cdd63928854f8b2628b1dce4626ddcdf35d56cb7cfdf7d64cca5822b78d4d3",
-							"saddr": "32cdd63928854f8b2628b1dce4626ddcdf35d56cb7cfdf7d64cca5822b78d4d3"
-						},
-						"sigs": [
-							{
-								"nonce": "031b84c5567b126440995d3ed5aaba0565d71e1834604819ff9c17f5e9d5dd078f",
-								"xs": "02e89cce4499ac1e9bb498dab9e3fab93cc40cd3d26c04a0292e00f4bf272499ec"
-							}
-						],
-						"sta": "S1",
-						"ver": "4:2"
-					}
+	Networked version of [Owner::init_send_tx](struct.Owner.html#method.init_send_tx).
+
+	```
+		# grin_wallet_api::doctest_helper_json_rpc_owner_assert_response!(
+		# r#"
+		{
+			"jsonrpc": "2.0",
+			"method": "init_send_tx",
+			"params": {
+				"token": "d202964900000000d302964900000000d402964900000000d502964900000000",
+				"args": {
+					"src_acct_name": null,
+					"amount": "6000000000",
+					"minimum_confirmations": 2,
+					"max_outputs": 500,
+					"num_change_outputs": 1,
+					"selection_strategy_is_use_all": true,
+					"refresh_outputs_from_node": true,
+					"target_slate_version": null,
+					"payment_proof_recipient_address": "tgrin1xtxavwfgs48ckf3gk8wwgcndmn0nt4tvkl8a7ltyejjcy2mc6nfs9gm2lp",
+					"ttl_blocks": null,
+					"send_args": null
+				}
+			},
+			"id": 1
+		}
+		# "#
+		# ,
+		# r#"
+		{
+		"id": 1,
+			"jsonrpc": "2.0",
+			"result": {
+				"Ok": {
+					"amt": "6000000000",
+					"fee": "23000000",
+					"id": "0436430c-2b02-624c-2032-570501212b00",
+					"proof": {
+						"raddr": "32cdd63928854f8b2628b1dce4626ddcdf35d56cb7cfdf7d64cca5822b78d4d3",
+						"saddr": "32cdd63928854f8b2628b1dce4626ddcdf35d56cb7cfdf7d64cca5822b78d4d3"
+					},
+					"sigs": [
+						{
+							"nonce": "031b84c5567b126440995d3ed5aaba0565d71e1834604819ff9c17f5e9d5dd078f",
+							"xs": "02e89cce4499ac1e9bb498dab9e3fab93cc40cd3d26c04a0292e00f4bf272499ec"
+						}
+					],
+					"sta": "S1",
+					"ver": "4:2"
 				}
 			}
-			# "#
-			# , 4, false, false, false, false);
-		```
-		*/
+		}
+		# "#
+		# , 4, false, false, false, false);
+	```
+	*/
 
 	fn init_send_tx(&self, token: Token, args: InitTxArgs) -> Result<VersionedSlate, Error>;
 
