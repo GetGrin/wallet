@@ -480,7 +480,7 @@ where
 	}
 
 	let input_len = coins.len();
-	let tx_weight = Transaction::weight_by_iok(input_len as u64, change_outputs as u64, 1u64);
+	let tx_weight = Transaction::weight_by_iok(input_len as u64, change_outputs as u64 + 1, 1u64);
 	let max_tx_weight = global::max_tx_weight();
 	if tx_weight > max_tx_weight {
 		let mut max_amount = 0;
@@ -488,7 +488,7 @@ where
 		for c in &coins {
 			input_len += 1;
 			let tx_weight =
-				Transaction::weight_by_iok(input_len as u64, change_outputs as u64, 1u64);
+				Transaction::weight_by_iok(input_len as u64, change_outputs as u64 + 1, 1u64);
 			if tx_weight >= max_tx_weight {
 				break;
 			}
