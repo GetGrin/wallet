@@ -68,6 +68,8 @@ pub struct InitTxArgs {
 	/// as many outputs as are needed to meet the amount, (and no more) starting with the smallest
 	/// value outputs.
 	pub selection_strategy_is_use_all: bool,
+	/// Flag to refresh outputs from node.
+	pub refresh_outputs_from_node: bool,
 	/// Optionally set the output target slate version (acceptable
 	/// down to the minimum slate version compatible with the current. If `None` the slate
 	/// is generated with the latest version.
@@ -117,6 +119,7 @@ impl Default for InitTxArgs {
 			max_outputs: 500,
 			num_change_outputs: 1,
 			selection_strategy_is_use_all: true,
+			refresh_outputs_from_node: true,
 			target_slate_version: None,
 			ttl_blocks: None,
 			estimate_only: Some(false),

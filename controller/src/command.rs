@@ -376,6 +376,7 @@ where
 					max_outputs: args.max_outputs as u32,
 					num_change_outputs: args.change_outputs as u32,
 					selection_strategy_is_use_all: strategy == "all",
+					refresh_outputs_from_node: !info_updated,
 					estimate_only: Some(true),
 					..Default::default()
 				};
@@ -415,6 +416,7 @@ where
 			max_outputs: args.max_outputs as u32,
 			num_change_outputs: args.change_outputs as u32,
 			selection_strategy_is_use_all: args.selection_strategy == "all",
+			refresh_outputs_from_node: !info_updated,
 			target_slate_version: args.target_slate_version,
 			payment_proof_recipient_address,
 			ttl_blocks: args.ttl_blocks,
@@ -1013,6 +1015,7 @@ where
 			max_outputs: args.max_outputs as u32,
 			num_change_outputs: 1u32,
 			selection_strategy_is_use_all: args.selection_strategy == "all",
+			refresh_outputs_from_node: !info_updated,
 			ttl_blocks: args.ttl_blocks,
 			send_args: None,
 			..Default::default()

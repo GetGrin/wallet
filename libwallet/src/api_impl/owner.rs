@@ -512,6 +512,7 @@ where
 			args.max_outputs as usize,
 			args.num_change_outputs as usize,
 			args.selection_strategy_is_use_all,
+			args.refresh_outputs_from_node,
 			&parent_key_id,
 		)?;
 		slate.amount = total;
@@ -540,6 +541,7 @@ where
 			args.max_outputs as usize,
 			args.num_change_outputs as usize,
 			args.selection_strategy_is_use_all,
+			args.refresh_outputs_from_node,
 			&parent_key_id,
 			true,
 			use_test_rng,
@@ -696,6 +698,7 @@ where
 		args.max_outputs as usize,
 		args.num_change_outputs as usize,
 		args.selection_strategy_is_use_all,
+		args.refresh_outputs_from_node,
 		&parent_key_id,
 		false,
 		use_test_rng,
