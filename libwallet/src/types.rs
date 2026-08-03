@@ -948,7 +948,7 @@ pub mod option_duration_as_secs {
 #[cfg(test)]
 mod tests {
 	use super::*;
-	use grin_core::ser::{DeserializationMode, ProtocolVersion};
+	use grin_core::ser::{DeserializationMode, ProtocolVersion, Reader, StreamingReader};
 	use grin_keychain::{ExtKeychain, ExtKeychainPath};
 	use serde_json::Value;
 
@@ -997,19 +997,24 @@ mod tests {
 		let parent = ExtKeychainPath::new(1, 1, 0, 0, 0).to_identifier();
 		let sender_keychain = ExtKeychain::from_random_seed(true).unwrap();
 
+		let protocol_ver = ProtocolVersion(3);
+
 		let mut context = Context::new(sender_keychain.secp(), &parent, false, true);
 		for i in 0..3000 {
 			let key_id = ExtKeychain::derive_key_id(1, 1, i, 0, 0);
 			context.add_output(&key_id, &None, i as u64);
 		}
-		let ser_value = ser::ser_vec(&context, ProtocolVersion(3)).unwrap();
+		let ser_value = ser::ser_vec(&context, protocol_ver).unwrap();
 		let mut value = ser_value.as_slice();
 		assert!(value.len() > 100_000);
-		let context = ser::deserialize::<Context, &[u8]>(
-			&mut value,
-			ProtocolVersion(3),
-			DeserializationMode::Full,
-		);
+		let context =
+			ser::deserialize::<Context, &[u8]>(&mut value, protocol_ver, DeserializationMode::Full);
 		assert!(context.is_ok());
+
+		// Big read for StreamingReader returns an error, cause limit is not set.
+		let mut streaming_reader = StreamingReader::new(&mut value, protocol_ver);
+		assert!(streaming_reader.read_limit().is_none());
+		let res = streaming_reader.read_bytes_len_prefix();
+		assert!(res.is_err());
 	}
 }
