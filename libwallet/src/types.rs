@@ -679,7 +679,7 @@ impl ser::Writeable for TxLogEntry {
 
 impl ser::Readable for TxLogEntry {
 	fn read<R: ser::Reader>(reader: &mut R) -> Result<TxLogEntry, ser::Error> {
-		let data = read_bytes_len_prefix(reader)?;
+		let data = reader.read_bytes_len_prefix()?;
 		serde_json::from_slice(&data[..]).map_err(|_| ser::Error::CorruptedData)
 	}
 }
