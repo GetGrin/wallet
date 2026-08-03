@@ -37,6 +37,10 @@ pub enum Error {
 		needed_disp: String,
 	},
 
+	/// Big amount error.
+	#[error("Big amount error, can send maximum {0} nanogrins")]
+	BigAmountError(u64),
+
 	/// Fee error
 	#[error("Fee Error: {0}")]
 	Fee(String),

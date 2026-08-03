@@ -115,19 +115,6 @@ where
 		);
 	}
 
-	let input_len = inputs.len();
-	let output_len = change_amounts_derivations.len();
-	let tx_weight = Transaction::weight_by_iok(input_len as u64, output_len as u64, 1u64);
-	let max_tx_weight = global::max_tx_weight();
-	if tx_weight > max_tx_weight {
-		let err = format!(
-			"Transaction weight {}, exceeds global max_tx_weight {}",
-			tx_weight, max_tx_weight
-		);
-		error!("{}", err);
-		return Err(Error::GenericError(err));
-	}
-
 	Ok(context)
 }
 
@@ -491,6 +478,29 @@ where
 			};
 		}
 	}
+
+	let input_len = coins.len();
+	let tx_weight = Transaction::weight_by_iok(input_len as u64, change_outputs as u64, 1u64);
+	let max_tx_weight = global::max_tx_weight();
+	if tx_weight > max_tx_weight {
+		let mut max_amount = 0;
+		let mut input_len = 0;
+		for c in &coins {
+			input_len += 1;
+			let tx_weight =
+				Transaction::weight_by_iok(input_len as u64, change_outputs as u64, 1u64);
+			if tx_weight >= max_tx_weight {
+				break;
+			}
+			max_amount += c.value;
+		}
+		error!("{}", format!(
+			"Transaction weight {}, exceeds global max_tx_weight {}, can send maximum {}, send such amount to yourself for outputs consolidation",
+			tx_weight, max_tx_weight, amount_to_hr_string(max_amount, true)
+		));
+		return Err(Error::BigAmountError(max_amount));
+	}
+
 	// If original amount includes fee, the new amount should
 	// be reduced, to accommodate the fee.
 	let new_amount = match amount_includes_fee {

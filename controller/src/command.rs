@@ -363,7 +363,7 @@ where
 		let strategies = vec!["smallest", "all"]
 			.into_iter()
 			.map(|strategy| {
-				let init_args = InitTxArgs {
+				let mut init_args = InitTxArgs {
 					src_acct_name: None,
 					amount,
 					amount_includes_fee: Some(args.amount_includes_fee),
@@ -374,7 +374,24 @@ where
 					estimate_only: Some(true),
 					..Default::default()
 				};
-				let slate = owner_api.init_send_tx(keychain_mask, init_args)?;
+				let result = owner_api.init_send_tx(keychain_mask, init_args.clone());
+				let slate = match result {
+					Ok(s) => s,
+					Err(e) => match e {
+						libwallet::Error::BigAmountError(a) => {
+							if args.use_max_amount {
+								amount = a;
+								init_args.amount = amount;
+								owner_api.init_send_tx(keychain_mask, init_args)?
+							} else {
+								return Err(grin_wallet_libwallet::Error::from(e));
+							}
+						}
+						_ => {
+							return Err(grin_wallet_libwallet::Error::from(e));
+						}
+					},
+				};
 				Ok((strategy, slate.amount, slate.fee_fields))
 			})
 			.collect::<Result<Vec<_>, grin_wallet_libwallet::Error>>()?;
@@ -385,7 +402,7 @@ where
 			.as_deref()
 			.map(SlatepackAddress::try_from)
 			.transpose()?;
-		let init_args = InitTxArgs {
+		let mut init_args = InitTxArgs {
 			src_acct_name: None,
 			amount,
 			amount_includes_fee: Some(args.amount_includes_fee),
@@ -400,23 +417,45 @@ where
 			late_lock: Some(args.late_lock),
 			..Default::default()
 		};
-		let result = owner_api.init_send_tx(keychain_mask, init_args);
-		slate = match result {
-			Ok(s) => {
-				info!(
-					"Tx created: {} grin to {} (strategy '{}')",
-					core::amount_to_hr_string(amount, false),
-					dest.as_ref()
-						.map(ToString::to_string)
-						.unwrap_or_else(|| "no destination".to_string()),
-					args.selection_strategy,
-				);
-				s
-			}
-			Err(e) => {
-				info!("Tx not created: {}", e);
-				return Err(Error::from(e));
-			}
+		let init_send_tx = |init_args: InitTxArgs| -> Result<Slate, libwallet::Error> {
+			let result = owner_api.init_send_tx(keychain_mask, init_args.clone());
+			let slate = match result {
+				Ok(s) => {
+					info!(
+						"Tx created: {} grin to {} (strategy '{}')",
+						core::amount_to_hr_string(init_args.amount, false),
+						dest.as_ref()
+							.map(ToString::to_string)
+							.unwrap_or_else(|| "no destination".to_string()),
+						args.selection_strategy,
+					);
+					s
+				}
+				Err(e) => return Err(e),
+			};
+			Ok(slate)
+		};
+		slate = match init_send_tx(init_args.clone()) {
+			Ok(s) => s,
+			Err(e) => match e {
+				libwallet::Error::BigAmountError(a) => {
+					if args.use_max_amount {
+						amount = a;
+						init_args.amount = amount;
+						init_send_tx(init_args).map_err(|e| {
+							info!("Tx not created: {}", e);
+							Error::from(e)
+						})?
+					} else {
+						info!("Tx not created: {}", e);
+						return Err(Error::from(e));
+					}
+				}
+				_ => {
+					info!("Tx not created: {}", e);
+					return Err(Error::from(e));
+				}
+			},
 		};
 	}
 
