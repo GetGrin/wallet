@@ -263,19 +263,19 @@ impl NodeClient for HTTPNodeClient {
 
 			let max_num_requests = 16;
 			for req_chunks in reqs.chunks(max_num_requests) {
+				let mut tasks = vec![];
 				for req in req_chunks {
-					let mut tasks = vec![];
 					tasks.push(cl.post_async::<Request, Response>(
 						url.as_str(),
 						req,
 						api_secret.clone(),
 					));
-					let mut task: FuturesUnordered<_> = tasks.into_iter().collect();
-					while let Some(item) = task.next().await {
-						match item {
-							Ok(i) => outputs.push(i),
-							Err(e) => return Err(e),
-						}
+				}
+				let mut task: FuturesUnordered<_> = tasks.into_iter().collect();
+				while let Some(item) = task.next().await {
+					match item {
+						Ok(i) => outputs.push(i),
+						Err(e) => return Err(e),
 					}
 				}
 			}
