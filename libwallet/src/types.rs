@@ -752,7 +752,7 @@ impl ser::Writeable for StoredProofInfo {
 
 impl ser::Readable for StoredProofInfo {
 	fn read<R: ser::Reader>(reader: &mut R) -> Result<StoredProofInfo, ser::Error> {
-		let data = read_bytes_len_prefix(reader)?;
+		let data = reader.read_bytes_len_prefix()?;
 		serde_json::from_slice(&data[..]).map_err(|_| ser::Error::CorruptedData)
 	}
 }
@@ -774,7 +774,7 @@ impl ser::Writeable for AcctPathMapping {
 
 impl ser::Readable for AcctPathMapping {
 	fn read<R: ser::Reader>(reader: &mut R) -> Result<AcctPathMapping, ser::Error> {
-		let data = read_bytes_len_prefix(reader)?;
+		let data = reader.read_bytes_len_prefix()?;
 		serde_json::from_slice(&data[..]).map_err(|_| ser::Error::CorruptedData)
 	}
 }
@@ -807,7 +807,7 @@ impl ser::Writeable for ScannedBlockInfo {
 
 impl ser::Readable for ScannedBlockInfo {
 	fn read<R: ser::Reader>(reader: &mut R) -> Result<ScannedBlockInfo, ser::Error> {
-		let data = read_bytes_len_prefix(reader)?;
+		let data = reader.read_bytes_len_prefix()?;
 		serde_json::from_slice(&data[..]).map_err(|_| ser::Error::CorruptedData)
 	}
 }
@@ -844,7 +844,7 @@ impl ser::Writeable for WalletInitStatus {
 
 impl ser::Readable for WalletInitStatus {
 	fn read<R: ser::Reader>(reader: &mut R) -> Result<WalletInitStatus, ser::Error> {
-		let data = read_bytes_len_prefix(reader)?;
+		let data = reader.read_bytes_len_prefix()?;
 		serde_json::from_slice(&data[..]).map_err(|_| ser::Error::CorruptedData)
 	}
 }
