@@ -357,7 +357,7 @@ where
 		amount = wallet_info.amount_currently_spendable;
 	}
 	if !info_updated {
-		warn!("Unable to contact Node to update wallet info");
+		warn!("Wallet info update was skipped");
 	}
 	if args.estimate_selection_strategies {
 		let strategies = vec!["smallest", "all"]
@@ -934,7 +934,7 @@ where
 	let (info_updated, _) =
 		owner_api.retrieve_summary_info(keychain_mask, true, args.minimum_confirmations)?;
 	if !info_updated {
-		warn!("Unable to contact Node to update wallet info");
+		warn!("Wallet info update was skipped");
 	}
 
 	if args.estimate_selection_strategies {
