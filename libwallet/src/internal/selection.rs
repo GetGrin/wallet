@@ -29,6 +29,8 @@ use crate::slate::Slate;
 use crate::types::*;
 use crate::util::OnionV3Address;
 use crate::{address, WalletBackend};
+use grin_core::core::Transaction;
+use grin_core::global;
 use std::collections::HashMap;
 use std::convert::TryInto;
 
@@ -98,7 +100,7 @@ where
 	context.amount = slate.amount;
 
 	// Store our private identifiers for each input
-	for input in inputs {
+	for input in &inputs {
 		context.add_input(&input.key_id, &input.mmr_index, input.value);
 	}
 
@@ -111,6 +113,19 @@ where
 			id.clone(),
 			wallet.calc_commit_for_cache(keychain_mask, *change_amount, &id)?,
 		);
+	}
+
+	let input_len = inputs.len();
+	let output_len = change_amounts_derivations.len();
+	let tx_weight = Transaction::weight_by_iok(input_len as u64, output_len as u64, 1u64);
+	let max_tx_weight = global::max_tx_weight();
+	if tx_weight > max_tx_weight {
+		let err = format!(
+			"Transaction weight {}, exceeds global max_tx_weight {}",
+			tx_weight, max_tx_weight
+		);
+		error!("{}", err);
+		return Err(Error::GenericError(err));
 	}
 
 	Ok(context)
