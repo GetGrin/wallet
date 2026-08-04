@@ -503,9 +503,9 @@ where
 	/// # grin_wallet_api::doctest_helper_setup_doc_env!(wallet, wallet_config);
 	///
 	/// let api_owner = Owner::new(wallet.clone(), None, std::path::PathBuf::from("grin-wallet.toml"));
-	/// let selection_strategy_is_use_all = false;
-	///
-	/// let result = api_owner.estimate_max_sendable(selection_strategy_is_use_all);
+	/// let update_from_node = true;
+	/// let minimum_confirmations = 10;
+	/// let result = api_owner.estimate_max_sendable(None, update_from_node, minimum_confirmations);
 	///
 	/// if let Ok((was_updated, output_mappings)) = result {
 	///     //...
