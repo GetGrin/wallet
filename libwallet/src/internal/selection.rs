@@ -394,6 +394,11 @@ where
 	C: NodeClient,
 	K: Keychain,
 {
+	debug!(
+		"selection_strategy_is_use_all: {}",
+		selection_strategy_is_use_all
+	);
+	debug!("max_outputs: {}", max_outputs);
 	// select some spendable coins from the wallet
 	let (max_outputs, mut coins) = select_coins(
 		wallet,
@@ -404,6 +409,7 @@ where
 		selection_strategy_is_use_all,
 		parent_key_id,
 	)?;
+	debug!("max_outputs2: {}", max_outputs);
 
 	// sender is responsible for setting the fee on the partial tx
 	// recipient should double-check the fee calculation and not blindly trust the
@@ -488,10 +494,12 @@ where
 	let tx_weight = Transaction::weight_by_iok(input_len as u64, output_len as u64, 1u64);
 	let max_tx_weight = global::max_tx_weight();
 	if tx_weight > max_tx_weight {
-		let eligible =
-			eligible_outputs(wallet, current_height, minimum_confirmations, parent_key_id)?;
-		let (max_amount, max_inputs) =
-			max_spendable_amount(&eligible, max_tx_weight, amount_includes_fee);
+		let (max_amount, max_inputs) = max_spendable_amount(
+			&coins,
+			output_len as u64,
+			max_tx_weight,
+			amount_includes_fee,
+		);
 		error!(
 			"Transaction weight {}, exceeds global max_tx_weight {}, can send maximum {}, send such amount to yourself for outputs consolidation",
 			tx_weight, max_tx_weight, amount_to_hr_string(max_amount, true)
@@ -512,19 +520,19 @@ where
 
 fn max_spendable_amount(
 	outputs: &[OutputData],
+	output_len: u64,
 	max_tx_weight: u64,
 	amount_includes_fee: bool,
 ) -> (u64, u32) {
-	let mut values = outputs
+	let values = outputs
 		.iter()
 		.map(|output| output.value)
 		.collect::<Vec<_>>();
-	values.sort_unstable_by(|a, b| b.cmp(a));
 	let (amount, inputs) = values
 		.into_iter()
 		.enumerate()
 		.take_while(|(index, _)| {
-			Transaction::weight_by_iok(*index as u64 + 1, 1, 1) <= max_tx_weight
+			Transaction::weight_by_iok(*index as u64 + 1, output_len, 1) <= max_tx_weight
 		})
 		.fold((0, 0), |(amount, inputs), (_, value)| {
 			(amount + value, inputs + 1)
@@ -798,20 +806,33 @@ mod tests {
 	fn max_spendable_uses_all_outputs() {
 		let selected = vec![output(1), output(2)];
 		let eligible = vec![output(1), output(2), output(100)];
-		let max_weight = Transaction::weight_by_iok(2, 1, 1);
+		let output_len = 1;
+		let max_weight = Transaction::weight_by_iok(2, output_len, 1);
+		assert_eq!(
+			max_spendable_amount(&selected, output_len, max_weight, true),
+			(3, 2)
+		);
+		assert_eq!(
+			max_spendable_amount(&eligible, output_len, max_weight, true),
+			(3, 2)
+		);
 
-		assert_eq!(max_spendable_amount(&selected, max_weight, true), (3, 2));
-		assert_eq!(max_spendable_amount(&eligible, max_weight, true), (102, 2));
+		let max_weight = Transaction::weight_by_iok(3, output_len, 1);
+		assert_eq!(
+			max_spendable_amount(&eligible, output_len, max_weight, true),
+			(103, 3)
+		);
 	}
 
 	#[test]
 	fn max_spendable_excludes_fee() {
 		global::set_local_accept_fee_base(500_000);
 		let coins = vec![output(1_000_000_000), output(2_000_000_000)];
-		let max_weight = Transaction::weight_by_iok(2, 1, 1);
+		let output_len = 2;
+		let max_weight = Transaction::weight_by_iok(2, output_len, 1);
 
 		assert_eq!(
-			max_spendable_amount(&coins, max_weight, false),
+			max_spendable_amount(&coins, output_len, max_weight, false),
 			(3_000_000_000 - tx_fee(2, 1, 1), 2)
 		);
 	}
