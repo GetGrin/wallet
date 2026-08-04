@@ -358,6 +358,10 @@ impl fmt::Display for OutputStatus {
 	}
 }
 
+/// Maximum private transaction context size.
+/// Verified against `max_tx_weight()` below.
+const MAX_CONTEXT_SIZE: usize = 4 * 1024 * 1024;
+
 #[derive(Serialize, Deserialize, Clone, Debug)]
 /// Holds the context for a single aggsig transaction
 pub struct Context {
@@ -892,8 +896,6 @@ impl ViewWalletOutputResult {
 	}
 }
 
-const MAX_CONTEXT_SIZE: usize = 4 * 1024 * 1024;
-
 fn read_bytes_len_prefix<R: ser::Reader>(reader: &mut R) -> Result<Vec<u8>, ser::Error> {
 	let len = reader.read_u64()?;
 	if len > MAX_CONTEXT_SIZE as u64 {
@@ -1064,6 +1066,31 @@ mod tests {
 		assert_eq!(
 			ser::ser_vec(&context, protocol_ver).unwrap_err(),
 			ser::Error::TooLargeReadErr
+		);
+	}
+
+	#[test]
+	fn max_weight_context_size() {
+		global::set_local_chain_type(global::ChainTypes::Mainnet);
+		let max_tx_weight = global::max_tx_weight();
+		let max_inputs = (1..)
+			.take_while(|inputs| Transaction::weight_by_iok(*inputs, 1, 1) <= max_tx_weight)
+			.last()
+			.unwrap();
+
+		let parent = ExtKeychainPath::new(1, 1, 0, 0, 0).to_identifier();
+		let sender_keychain = ExtKeychain::from_random_seed(true).unwrap();
+		let mut context = Context::new(sender_keychain.secp(), &parent, true, true);
+		for i in 0..max_inputs {
+			let key_id = ExtKeychain::derive_key_id(1, 1, i as u32, 0, 0);
+			context.add_input(&key_id, &Some(u64::MAX), u64::MAX);
+		}
+
+		let size = serde_json::to_vec(&context).unwrap().len();
+		println!("max-weight Context: {size} bytes ({max_inputs} inputs)");
+		assert!(
+			size <= MAX_CONTEXT_SIZE,
+			"max-weight Context is {size} bytes, limit is {MAX_CONTEXT_SIZE}"
 		);
 	}
 }
