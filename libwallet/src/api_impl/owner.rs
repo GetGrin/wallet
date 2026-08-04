@@ -21,6 +21,7 @@ use crate::api_impl::foreign::finalize_tx as foreign_finalize;
 use crate::grin_core::core::hash::Hashed;
 use crate::grin_core::core::{FeeFields, Output, OutputFeatures, Transaction};
 use crate::grin_core::libtx::proof;
+use crate::grin_core::libtx::tx_fee;
 use crate::grin_keychain::ViewKey;
 use crate::grin_util::secp::{key::SecretKey, pedersen::Commitment};
 use crate::grin_util::Mutex;
@@ -291,6 +292,61 @@ where
 		validated,
 		updater::retrieve_outputs(w, keychain_mask, include_spent, tx_id, Some(&parent_key_id))?,
 	))
+}
+
+/// Calculate max amount to send.
+pub fn estimate_max_sendable<'a, L, C, K>(
+	wallet_inst: Arc<Mutex<Box<dyn WalletInst<'a, L, C, K>>>>,
+	keychain_mask: Option<&SecretKey>,
+	status_send_channel: &Option<Sender<StatusMessage>>,
+	refresh_from_node: bool,
+	minimum_confirmations: u64,
+) -> Result<(bool, u64, u64, u32), Error>
+where
+	L: WalletLCProvider<'a, C, K>,
+	C: NodeClient + 'a,
+	K: Keychain + 'a,
+{
+	let validated = if refresh_from_node {
+		update_wallet_state(
+			wallet_inst.clone(),
+			keychain_mask,
+			status_send_channel,
+			false,
+		)?
+	} else {
+		false
+	};
+
+	wallet_lock!(wallet_inst, w);
+
+	let parent_key_id = w.parent_key_id();
+	let wallet_info = updater::retrieve_info(w, &parent_key_id, minimum_confirmations)?;
+	let current_height = w.last_confirmed_height()?;
+	let max_outputs = 500;
+	let change_outputs = 1;
+	let (amount, fee, input_count) = match selection::select_coins_and_fee(
+		w,
+		wallet_info.amount_currently_spendable,
+		true,
+		current_height,
+		minimum_confirmations,
+		max_outputs,
+		change_outputs,
+		true,
+		&parent_key_id,
+	) {
+		Ok((coins, _total, amount, fee)) => (amount, fee, coins.len() as u32),
+		Err(e) => match e {
+			Error::BigAmountError(amount, input_count) => {
+				let fee = tx_fee(input_count as usize, change_outputs + 1, 1);
+				(amount, fee, input_count)
+			}
+			_ => return Err(e),
+		},
+	};
+
+	Ok((validated, amount, fee, input_count))
 }
 
 /// Retrieve txs
