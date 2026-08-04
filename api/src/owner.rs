@@ -507,7 +507,7 @@ where
 	/// let minimum_confirmations = 10;
 	/// let result = api_owner.estimate_max_sendable(None, update_from_node, minimum_confirmations);
 	///
-	/// if let Ok((was_updated, output_mappings)) = result {
+	/// if let Ok((was_updated, amount, fee, max_inputs)) = result {
 	///     //...
 	/// }
 	/// ```
