@@ -229,6 +229,51 @@ pub trait OwnerRpc {
 	) -> Result<(bool, Vec<OutputCommitMapping>), Error>;
 
 	/**
+	Networked version of [Owner::retrieve_txs](struct.Owner.html#method.estimate_max_sendable).
+
+	# Json rpc example
+
+	```
+	# grin_wallet_api::doctest_helper_json_rpc_owner_assert_response!(
+	# r#"
+	{
+		"jsonrpc": "2.0",
+		"method": "estimate_max_sendable",
+		"params": {
+			"token": "d202964900000000d302964900000000d402964900000000d502964900000000",
+			"refresh_from_node": true,
+			"minimum_confirmations": 1
+		},
+		"id": 1
+	}
+	# "#
+	# ,
+	# r#"
+	{
+		"id": 1,
+		"jsonrpc": "2.0",
+		"result": {
+			   "Ok": [
+				 true,
+				 59987500000,
+				 12500000,
+				 1
+			   ]
+		  }
+	}
+	# "#
+	# , 4, false, false, false, false);
+	```
+	 */
+
+	fn estimate_max_sendable(
+		&self,
+		token: Token,
+		refresh_from_node: bool,
+		minimum_confirmations: u64,
+	) -> Result<(bool, u64, u64, u32), Error>;
+
+	/**
 	Networked version of [Owner::retrieve_txs](struct.Owner.html#method.retrieve_txs).
 
 	# Json rpc example
@@ -2065,6 +2110,20 @@ where
 			include_spent,
 			refresh_from_node,
 			tx_id,
+		)
+	}
+
+	fn estimate_max_sendable(
+		&self,
+		token: Token,
+		refresh_from_node: bool,
+		minimum_confirmations: u64,
+	) -> Result<(bool, u64, u64, u32), Error> {
+		Owner::estimate_max_sendable(
+			self,
+			(&token.keychain_mask).as_ref(),
+			refresh_from_node,
+			minimum_confirmations,
 		)
 	}
 
