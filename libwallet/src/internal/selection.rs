@@ -394,11 +394,6 @@ where
 	C: NodeClient,
 	K: Keychain,
 {
-	debug!(
-		"selection_strategy_is_use_all: {}",
-		selection_strategy_is_use_all
-	);
-	debug!("max_outputs: {}", max_outputs);
 	// select some spendable coins from the wallet
 	let (max_outputs, mut coins) = select_coins(
 		wallet,
@@ -409,7 +404,6 @@ where
 		selection_strategy_is_use_all,
 		parent_key_id,
 	)?;
-	debug!("max_outputs2: {}", max_outputs);
 
 	// sender is responsible for setting the fee on the partial tx
 	// recipient should double-check the fee calculation and not blindly trust the
