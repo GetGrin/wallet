@@ -327,6 +327,13 @@ pub struct SendArgs {
 	pub slatepack_qr: bool,
 }
 
+fn max_retry_args(mut init_args: InitTxArgs, amount: u64, max_inputs: u32) -> InitTxArgs {
+	init_args.amount = amount;
+	init_args.max_outputs = max_inputs;
+	init_args.selection_strategy_is_use_all = true;
+	init_args
+}
+
 pub fn send<L, C, K>(
 	owner_api: &mut Owner<L, C, K>,
 	keychain_mask: Option<&SecretKey>,
@@ -391,9 +398,7 @@ where
 						libwallet::Error::BigAmountError(a, max_inputs) => {
 							if args.use_max_amount {
 								amount = a;
-								init_args.amount = amount;
-								init_args.max_outputs = max_inputs;
-								init_args.selection_strategy_is_use_all = true;
+								init_args = max_retry_args(init_args, amount, max_inputs);
 								owner_api.init_send_tx(keychain_mask, init_args)?
 							} else {
 								return Err(grin_wallet_libwallet::Error::from(e));
@@ -454,9 +459,7 @@ where
 				libwallet::Error::BigAmountError(a, max_inputs) => {
 					if args.use_max_amount {
 						amount = a;
-						init_args.amount = amount;
-						init_args.max_outputs = max_inputs;
-						init_args.selection_strategy_is_use_all = true;
+						init_args = max_retry_args(init_args, amount, max_inputs);
 						init_send_tx(init_args).map_err(|e| {
 							info!("Tx not created: {}", e);
 							Error::from(e)
@@ -1511,5 +1514,25 @@ where
 			error!("Proof not valid: {}", e);
 			Err(Error::from(e))
 		}
+	}
+}
+
+#[cfg(test)]
+mod send_tests {
+	use super::*;
+
+	#[test]
+	fn max_retry_updates_args() {
+		let args = InitTxArgs {
+			amount: 100,
+			max_outputs: 500,
+			selection_strategy_is_use_all: false,
+			..Default::default()
+		};
+		let args = max_retry_args(args, 42, 7);
+
+		assert_eq!(args.amount, 42);
+		assert_eq!(args.max_outputs, 7);
+		assert!(args.selection_strategy_is_use_all);
 	}
 }

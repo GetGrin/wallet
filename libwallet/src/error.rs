@@ -14,7 +14,7 @@
 
 //! Error types for libwallet
 
-use crate::grin_core::core::{committed, transaction};
+use crate::grin_core::core::{amount_to_hr_string, committed, transaction};
 use crate::grin_core::libtx;
 use crate::grin_keychain;
 use crate::grin_util::secp;
@@ -38,7 +38,10 @@ pub enum Error {
 	},
 
 	/// Big amount error.
-	#[error("Big amount error, can send maximum {0} nanogrins")]
+	#[error(
+		"Amount too large for a single transaction; can send at most {} using {1} inputs. Send that amount to yourself to consolidate outputs",
+		amount_to_hr_string(*.0, true)
+	)]
 	BigAmountError(u64, u32),
 
 	/// Fee error
@@ -369,5 +372,18 @@ impl From<&str> for Error {
 impl From<bech32::Error> for Error {
 	fn from(error: bech32::Error) -> Error {
 		Error::SlatepackAddress(format!("{}", error))
+	}
+}
+
+#[cfg(test)]
+mod tests {
+	use super::*;
+
+	#[test]
+	fn big_amount_message() {
+		let message = Error::BigAmountError(3_000_000_000, 2).to_string();
+		assert!(message.contains("3.0"));
+		assert!(message.contains("2 inputs"));
+		assert!(message.contains("consolidate outputs"));
 	}
 }

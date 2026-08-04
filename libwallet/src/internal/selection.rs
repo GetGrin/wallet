@@ -488,7 +488,10 @@ where
 	let tx_weight = Transaction::weight_by_iok(input_len as u64, output_len as u64, 1u64);
 	let max_tx_weight = global::max_tx_weight();
 	if tx_weight > max_tx_weight {
-		let (max_amount, max_inputs) = max_spendable_amount(&coins, max_tx_weight);
+		let eligible =
+			eligible_outputs(wallet, current_height, minimum_confirmations, parent_key_id)?;
+		let (max_amount, max_inputs) =
+			max_spendable_amount(&eligible, max_tx_weight, amount_includes_fee);
 		error!(
 			"Transaction weight {}, exceeds global max_tx_weight {}, can send maximum {}, send such amount to yourself for outputs consolidation",
 			tx_weight, max_tx_weight, amount_to_hr_string(max_amount, true)
@@ -507,10 +510,17 @@ where
 	Ok((coins, total, new_amount, fee))
 }
 
-fn max_spendable_amount(coins: &[OutputData], max_tx_weight: u64) -> (u64, u32) {
-	let mut values = coins.iter().map(|coin| coin.value).collect::<Vec<_>>();
+fn max_spendable_amount(
+	outputs: &[OutputData],
+	max_tx_weight: u64,
+	amount_includes_fee: bool,
+) -> (u64, u32) {
+	let mut values = outputs
+		.iter()
+		.map(|output| output.value)
+		.collect::<Vec<_>>();
 	values.sort_unstable_by(|a, b| b.cmp(a));
-	values
+	let (amount, inputs) = values
 		.into_iter()
 		.enumerate()
 		.take_while(|(index, _)| {
@@ -518,7 +528,32 @@ fn max_spendable_amount(coins: &[OutputData], max_tx_weight: u64) -> (u64, u32) 
 		})
 		.fold((0, 0), |(amount, inputs), (_, value)| {
 			(amount + value, inputs + 1)
+		});
+	let amount = if amount_includes_fee {
+		amount
+	} else {
+		amount.saturating_sub(tx_fee(inputs as usize, 1, 1))
+	};
+	(amount, inputs)
+}
+
+fn eligible_outputs<C, K>(
+	wallet: &WalletBackend<C, K>,
+	current_height: u64,
+	minimum_confirmations: u64,
+	parent_key_id: &Identifier,
+) -> Result<Vec<OutputData>, Error>
+where
+	C: NodeClient,
+	K: Keychain,
+{
+	Ok(wallet
+		.iter()?
+		.filter(|output| {
+			output.root_key_id == *parent_key_id
+				&& output.eligible_to_spend(current_height, minimum_confirmations)
 		})
+		.collect())
 }
 
 /// Selects inputs and change for a transaction
@@ -614,13 +649,8 @@ where
 	K: Keychain,
 {
 	// first find all eligible outputs based on number of confirmations
-	let mut eligible = wallet
-		.iter()?
-		.filter(|out| {
-			out.root_key_id == *parent_key_id
-				&& out.eligible_to_spend(current_height, minimum_confirmations)
-		})
-		.collect::<Vec<OutputData>>();
+	let mut eligible =
+		eligible_outputs(wallet, current_height, minimum_confirmations, parent_key_id)?;
 
 	let max_available = eligible.len();
 
@@ -765,10 +795,24 @@ mod tests {
 	}
 
 	#[test]
-	fn max_spendable_uses_largest_outputs() {
-		let coins = vec![output(1), output(2), output(100)];
+	fn max_spendable_uses_all_outputs() {
+		let selected = vec![output(1), output(2)];
+		let eligible = vec![output(1), output(2), output(100)];
 		let max_weight = Transaction::weight_by_iok(2, 1, 1);
 
-		assert_eq!(max_spendable_amount(&coins, max_weight), (102, 2));
+		assert_eq!(max_spendable_amount(&selected, max_weight, true), (3, 2));
+		assert_eq!(max_spendable_amount(&eligible, max_weight, true), (102, 2));
+	}
+
+	#[test]
+	fn max_spendable_excludes_fee() {
+		global::set_local_accept_fee_base(500_000);
+		let coins = vec![output(1_000_000_000), output(2_000_000_000)];
+		let max_weight = Transaction::weight_by_iok(2, 1, 1);
+
+		assert_eq!(
+			max_spendable_amount(&coins, max_weight, false),
+			(3_000_000_000 - tx_fee(2, 1, 1), 2)
+		);
 	}
 }
