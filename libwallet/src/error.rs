@@ -39,7 +39,7 @@ pub enum Error {
 
 	/// Big amount error.
 	#[error("Big amount error, can send maximum {0} nanogrins")]
-	BigAmountError(u64),
+	BigAmountError(u64, u32),
 
 	/// Fee error
 	#[error("Fee Error: {0}")]

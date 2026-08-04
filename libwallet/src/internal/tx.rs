@@ -160,7 +160,7 @@ where
 	C: NodeClient,
 	K: Keychain,
 {
-	// sender should always refresh outputs
+	// Refresh unless the caller already updated the wallet state.
 	if refresh_outputs {
 		updater::refresh_outputs(wallet, keychain_mask, parent_key_id, false)?;
 	}
@@ -266,7 +266,7 @@ where
 	C: NodeClient,
 	K: Keychain,
 {
-	// sender should always refresh outputs
+	// Refresh unless the caller already updated the wallet state.
 	if init_tx_args.refresh_outputs_from_node {
 		updater::refresh_outputs(wallet, keychain_mask, parent_key_id, false)?;
 	}

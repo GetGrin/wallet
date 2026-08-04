@@ -351,18 +351,22 @@ where
 
 	let mut slate = Slate::blank(2, false);
 	let mut amount = args.amount;
-	let (info_updated, wallet_info) =
-		owner_api.retrieve_summary_info(keychain_mask, true, args.minimum_confirmations)?;
+	let (info_updated, update_skipped, wallet_info) = owner_api
+		.retrieve_summary_info_with_refresh_status(
+			keychain_mask,
+			true,
+			args.minimum_confirmations,
+		)?;
 	if args.use_max_amount {
 		amount = wallet_info.amount_currently_spendable;
 	}
 	if !info_updated {
-		let reason = if owner_api.updater_running.load(Ordering::SeqCst) {
+		let reason = if update_skipped {
 			"the updater is running"
 		} else {
 			"node connection error"
 		};
-		warn!("Wallet info update was skipped {}", reason);
+		warn!("Wallet info update was skipped: {}", reason);
 	}
 	if args.estimate_selection_strategies {
 		let strategies = vec!["smallest", "all"]
@@ -384,10 +388,12 @@ where
 				let slate = match result {
 					Ok(s) => s,
 					Err(e) => match e {
-						libwallet::Error::BigAmountError(a) => {
+						libwallet::Error::BigAmountError(a, max_inputs) => {
 							if args.use_max_amount {
 								amount = a;
 								init_args.amount = amount;
+								init_args.max_outputs = max_inputs;
+								init_args.selection_strategy_is_use_all = true;
 								owner_api.init_send_tx(keychain_mask, init_args)?
 							} else {
 								return Err(grin_wallet_libwallet::Error::from(e));
@@ -445,10 +451,12 @@ where
 		slate = match init_send_tx(init_args.clone()) {
 			Ok(s) => s,
 			Err(e) => match e {
-				libwallet::Error::BigAmountError(a) => {
+				libwallet::Error::BigAmountError(a, max_inputs) => {
 					if args.use_max_amount {
 						amount = a;
 						init_args.amount = amount;
+						init_args.max_outputs = max_inputs;
+						init_args.selection_strategy_is_use_all = true;
 						init_send_tx(init_args).map_err(|e| {
 							info!("Tx not created: {}", e);
 							Error::from(e)
@@ -977,10 +985,13 @@ where
 	let mut slate = args.slate.clone();
 
 	// Refresh wallet state from node.
-	let (info_updated, _) =
-		owner_api.retrieve_summary_info(keychain_mask, true, args.minimum_confirmations)?;
+	let (info_updated, update_skipped, _) = owner_api.retrieve_summary_info_with_refresh_status(
+		keychain_mask,
+		true,
+		args.minimum_confirmations,
+	)?;
 	if !info_updated {
-		let reason = if owner_api.updater_running.load(Ordering::SeqCst) {
+		let reason = if update_skipped {
 			"the updater is running"
 		} else {
 			"node connection error"
@@ -999,13 +1010,14 @@ where
 					max_outputs: args.max_outputs as u32,
 					num_change_outputs: 1u32,
 					selection_strategy_is_use_all: strategy == "all",
+					refresh_outputs_from_node: !info_updated,
 					estimate_only: Some(true),
 					..Default::default()
 				};
-				let slate = owner_api.init_send_tx(keychain_mask, init_args).unwrap();
-				(strategy, slate.amount, slate.fee_fields)
+				let slate = owner_api.init_send_tx(keychain_mask, init_args)?;
+				Ok((strategy, slate.amount, slate.fee_fields))
 			})
-			.collect();
+			.collect::<Result<Vec<_>, libwallet::Error>>()?;
 		display::estimate(slate.amount, strategies, dark_scheme);
 	} else {
 		let init_args = InitTxArgs {

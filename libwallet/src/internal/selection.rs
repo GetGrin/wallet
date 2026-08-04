@@ -480,25 +480,20 @@ where
 	}
 
 	let input_len = coins.len();
-	let tx_weight = Transaction::weight_by_iok(input_len as u64, change_outputs as u64 + 1, 1u64);
+	let output_len = if total == amount_with_fee {
+		1
+	} else {
+		change_outputs + 1
+	};
+	let tx_weight = Transaction::weight_by_iok(input_len as u64, output_len as u64, 1u64);
 	let max_tx_weight = global::max_tx_weight();
 	if tx_weight > max_tx_weight {
-		let mut max_amount = 0;
-		let mut input_len = 0;
-		for c in &coins {
-			input_len += 1;
-			let tx_weight =
-				Transaction::weight_by_iok(input_len as u64, change_outputs as u64 + 1, 1u64);
-			if tx_weight >= max_tx_weight {
-				break;
-			}
-			max_amount += c.value;
-		}
-		error!("{}", format!(
+		let (max_amount, max_inputs) = max_spendable_amount(&coins, max_tx_weight);
+		error!(
 			"Transaction weight {}, exceeds global max_tx_weight {}, can send maximum {}, send such amount to yourself for outputs consolidation",
 			tx_weight, max_tx_weight, amount_to_hr_string(max_amount, true)
-		));
-		return Err(Error::BigAmountError(max_amount));
+		);
+		return Err(Error::BigAmountError(max_amount, max_inputs));
 	}
 
 	// If original amount includes fee, the new amount should
@@ -510,6 +505,20 @@ where
 		false => amount,
 	};
 	Ok((coins, total, new_amount, fee))
+}
+
+fn max_spendable_amount(coins: &[OutputData], max_tx_weight: u64) -> (u64, u32) {
+	let mut values = coins.iter().map(|coin| coin.value).collect::<Vec<_>>();
+	values.sort_unstable_by(|a, b| b.cmp(a));
+	values
+		.into_iter()
+		.enumerate()
+		.take_while(|(index, _)| {
+			Transaction::weight_by_iok(*index as u64 + 1, 1, 1) <= max_tx_weight
+		})
+		.fold((0, 0), |(amount, inputs), (_, value)| {
+			(amount + value, inputs + 1)
+		})
 }
 
 /// Selects inputs and change for a transaction
@@ -733,4 +742,33 @@ where
 	// restore the original offset
 	slate.tx_or_err_mut()?.offset = slate.offset.clone();
 	Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+	use super::*;
+
+	fn output(value: u64) -> OutputData {
+		OutputData {
+			root_key_id: Identifier::zero(),
+			key_id: Identifier::zero(),
+			n_child: 0,
+			commit: None,
+			mmr_index: None,
+			value,
+			status: OutputStatus::Unspent,
+			height: 0,
+			lock_height: 0,
+			is_coinbase: false,
+			tx_log_entry: None,
+		}
+	}
+
+	#[test]
+	fn max_spendable_uses_largest_outputs() {
+		let coins = vec![output(1), output(2), output(100)];
+		let max_weight = Transaction::weight_by_iok(2, 1, 1);
+
+		assert_eq!(max_spendable_amount(&coins, max_weight), (102, 2));
+	}
 }

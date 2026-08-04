@@ -604,21 +604,34 @@ where
 		refresh_from_node: bool,
 		minimum_confirmations: u64,
 	) -> Result<(bool, WalletInfo), Error> {
+		let (updated, _, info) = self.retrieve_summary_info_with_refresh_status(
+			keychain_mask,
+			refresh_from_node,
+			minimum_confirmations,
+		)?;
+		Ok((updated, info))
+	}
+
+	/// Retrieve summary info and whether refresh was skipped.
+	pub fn retrieve_summary_info_with_refresh_status(
+		&self,
+		keychain_mask: Option<&SecretKey>,
+		refresh_from_node: bool,
+		minimum_confirmations: u64,
+	) -> Result<(bool, bool, WalletInfo), Error> {
 		let tx = {
 			let t = self.status_tx.lock();
 			t.clone()
 		};
-		let refresh_from_node = match self.updater_running.load(Ordering::Relaxed) {
-			true => false,
-			false => refresh_from_node,
-		};
-		owner::retrieve_summary_info(
+		let refresh_skipped = refresh_from_node && self.updater_running.load(Ordering::Relaxed);
+		let (updated, info) = owner::retrieve_summary_info(
 			self.wallet_inst.clone(),
 			keychain_mask,
 			&tx,
-			refresh_from_node,
+			refresh_from_node && !refresh_skipped,
 			minimum_confirmations,
-		)
+		)?;
+		Ok((updated, refresh_skipped, info))
 	}
 
 	/// Initiates a new transaction as the sender, creating a new

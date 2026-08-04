@@ -484,7 +484,11 @@ impl Context {
 
 impl ser::Writeable for Context {
 	fn write<W: ser::Writer>(&self, writer: &mut W) -> Result<(), ser::Error> {
-		writer.write_bytes(&serde_json::to_vec(self).map_err(|_| ser::Error::CorruptedData)?)
+		let data = serde_json::to_vec(self).map_err(|_| ser::Error::CorruptedData)?;
+		if data.len() > MAX_CONTEXT_SIZE {
+			return Err(ser::Error::TooLargeReadErr);
+		}
+		writer.write_bytes(&data)
 	}
 }
 
@@ -888,8 +892,14 @@ impl ViewWalletOutputResult {
 	}
 }
 
+const MAX_CONTEXT_SIZE: usize = 4 * 1024 * 1024;
+
 fn read_bytes_len_prefix<R: ser::Reader>(reader: &mut R) -> Result<Vec<u8>, ser::Error> {
-	let mut len = reader.read_u64()? as usize;
+	let len = reader.read_u64()?;
+	if len > MAX_CONTEXT_SIZE as u64 {
+		return Err(ser::Error::TooLargeReadErr);
+	}
+	let mut len = len as usize;
 	match reader.read_limit() {
 		None => reader.read_fixed_bytes(len),
 		Some(limit) => {
@@ -1021,13 +1031,39 @@ mod tests {
 			assert!(context.is_ok());
 		}
 
-		// Big read for StreamingReader returns an error, cause limit is not set.
+		// StreamingReader has no per-read limit and reads the complete Context.
 		let context = create_context();
 		let ser_value = ser::ser_vec(&context, protocol_ver).unwrap();
 		let mut value = ser_value.as_slice();
 		let mut streaming_reader = StreamingReader::new(&mut value, protocol_ver);
 		assert!(streaming_reader.read_limit().is_none());
 		let res = Context::read(&mut streaming_reader);
-		assert!(res.is_ok());
+		assert_eq!(res.unwrap().get_outputs().len(), 3000);
+	}
+
+	#[test]
+	fn context_size_limit() {
+		let protocol_ver = ProtocolVersion(3);
+		let oversized_len = ((MAX_CONTEXT_SIZE + 1) as u64).to_be_bytes();
+		let mut oversized_prefix = oversized_len.as_slice();
+		let read = ser::deserialize::<Context, &[u8]>(
+			&mut oversized_prefix,
+			protocol_ver,
+			DeserializationMode::Full,
+		);
+		assert_eq!(read.unwrap_err(), ser::Error::TooLargeReadErr);
+
+		let parent = ExtKeychainPath::new(1, 1, 0, 0, 0).to_identifier();
+		let sender_keychain = ExtKeychain::from_random_seed(true).unwrap();
+		let mut context = Context::new(sender_keychain.secp(), &parent, false, true);
+		context.late_lock_args = Some(InitTxArgs {
+			src_acct_name: Some("x".repeat(MAX_CONTEXT_SIZE)),
+			..Default::default()
+		});
+
+		assert_eq!(
+			ser::ser_vec(&context, protocol_ver).unwrap_err(),
+			ser::Error::TooLargeReadErr
+		);
 	}
 }
