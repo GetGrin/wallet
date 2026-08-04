@@ -334,6 +334,14 @@ fn max_retry_args(mut init_args: InitTxArgs, amount: u64, max_inputs: u32) -> In
 	init_args
 }
 
+fn estimate_strategies(use_max_amount: bool) -> &'static [&'static str] {
+	if use_max_amount {
+		&["all"]
+	} else {
+		&["smallest", "all"]
+	}
+}
+
 pub fn send<L, C, K>(
 	owner_api: &mut Owner<L, C, K>,
 	keychain_mask: Option<&SecretKey>,
@@ -376,8 +384,9 @@ where
 		warn!("Wallet info update was skipped: {}", reason);
 	}
 	if args.estimate_selection_strategies {
-		let strategies = vec!["smallest", "all"]
-			.into_iter()
+		let strategies = estimate_strategies(args.use_max_amount)
+			.iter()
+			.copied()
 			.map(|strategy| {
 				let mut init_args = InitTxArgs {
 					src_acct_name: None,
@@ -1534,5 +1543,11 @@ mod send_tests {
 		assert_eq!(args.amount, 42);
 		assert_eq!(args.max_outputs, 7);
 		assert!(args.selection_strategy_is_use_all);
+	}
+
+	#[test]
+	fn max_estimate_uses_all() {
+		assert_eq!(estimate_strategies(true), &["all"]);
+		assert_eq!(estimate_strategies(false), &["smallest", "all"]);
 	}
 }
