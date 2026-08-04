@@ -375,13 +375,8 @@ where
 	if args.use_max_amount {
 		amount = wallet_info.amount_currently_spendable;
 	}
-	if !info_updated {
-		let reason = if update_skipped {
-			"the updater is running"
-		} else {
-			"node connection error"
-		};
-		warn!("Wallet info update was skipped: {}", reason);
+	if !info_updated && !update_skipped {
+		warn!("Wallet info update was skipped: node connection error");
 	}
 	if args.estimate_selection_strategies {
 		let strategies = estimate_strategies(args.use_max_amount)
@@ -1002,13 +997,8 @@ where
 		true,
 		args.minimum_confirmations,
 	)?;
-	if !info_updated {
-		let reason = if update_skipped {
-			"the updater is running"
-		} else {
-			"node connection error"
-		};
-		warn!("Wallet info update was skipped: {}", reason);
+	if !info_updated && !update_skipped {
+		warn!("Wallet info update was skipped: node connection error");
 	}
 
 	if args.estimate_selection_strategies {
