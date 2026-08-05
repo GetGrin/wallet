@@ -39,7 +39,7 @@ pub enum Error {
 
 	/// Big amount error.
 	#[error(
-		"Amount too large for a single transaction; can send at most {} using {1} inputs. Send that amount to yourself using the 'all' selection strategy and a maximum of {1} inputs to consolidate outputs",
+		"Amount too large for a single transaction; can send at most {} using {2} inputs. Send that amount to yourself using the 'all' selection strategy and a maximum of {1} inputs to consolidate outputs",
 		amount_to_hr_string(*.0, true)
 	)]
 	BigAmountError(u64, u64, u32),
