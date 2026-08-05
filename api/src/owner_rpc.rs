@@ -229,7 +229,7 @@ pub trait OwnerRpc {
 	) -> Result<(bool, Vec<OutputCommitMapping>), Error>;
 
 	/**
-	Networked version of [Owner::retrieve_txs](struct.Owner.html#method.estimate_max_sendable).
+	Networked version of [Owner::estimate_max_sendable](struct.Owner.html#method.estimate_max_sendable).
 
 	# Json rpc example
 

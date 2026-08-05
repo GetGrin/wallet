@@ -473,7 +473,7 @@ where
 		)
 	}
 
-	/// Returns max available value to send for provided selection strategy.
+	/// Returns max available value to send for selecting all outputs.
 	///
 	/// # Arguments
 	/// * `keychain_mask` - Wallet secret mask to XOR against the stored wallet seed before using, if
@@ -495,7 +495,7 @@ where
 	/// argument was set to `true`).
 	/// * The second `u64` is amount to send.
 	/// * The third element is fee
-	/// * The forth is maximum input count for selected strategy
+	/// * The fourth is maximum input count
 	///
 	/// # Example
 	/// Set up as in [`new`](struct.Owner.html#method.new) method above.
