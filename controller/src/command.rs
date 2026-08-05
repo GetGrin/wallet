@@ -403,7 +403,8 @@ where
 				let slate = match result {
 					Ok(s) => s,
 					Err(e) => match e {
-						libwallet::Error::BigAmountError(a, max_inputs) => {
+						libwallet::Error::BigAmountError(a, _fee, max_inputs) => {
+							debug!("{}", e);
 							if args.use_max_amount {
 								amount = a;
 								init_args = max_retry_args(init_args, amount, max_inputs);
@@ -464,7 +465,8 @@ where
 		slate = match init_send_tx(init_args.clone()) {
 			Ok(s) => s,
 			Err(e) => match e {
-				libwallet::Error::BigAmountError(a, max_inputs) => {
+				libwallet::Error::BigAmountError(a, _fee, max_inputs) => {
+					debug!("{}", e);
 					if args.use_max_amount {
 						amount = a;
 						init_args = max_retry_args(init_args, amount, max_inputs);

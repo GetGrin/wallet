@@ -498,7 +498,8 @@ where
 			"Transaction weight {}, exceeds global max_tx_weight {}, can send maximum {}, send such amount to yourself for outputs consolidation",
 			tx_weight, max_tx_weight, amount_to_hr_string(max_amount, true)
 		);
-		return Err(Error::BigAmountError(max_amount, max_inputs));
+		let fee = tx_fee(max_inputs as usize, output_len, 1);
+		return Err(Error::BigAmountError(max_amount, fee, max_inputs));
 	}
 
 	// If original amount includes fee, the new amount should

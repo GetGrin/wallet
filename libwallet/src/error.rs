@@ -42,7 +42,7 @@ pub enum Error {
 		"Amount too large for a single transaction; can send at most {} using {1} inputs. Send that amount to yourself using the 'all' selection strategy and a maximum of {1} inputs to consolidate outputs",
 		amount_to_hr_string(*.0, true)
 	)]
-	BigAmountError(u64, u32),
+	BigAmountError(u64, u64, u32),
 
 	/// Fee error
 	#[error("Fee Error: {0}")]
@@ -381,8 +381,9 @@ mod tests {
 
 	#[test]
 	fn big_amount_message() {
-		let message = Error::BigAmountError(3_000_000_000, 2).to_string();
+		let message = Error::BigAmountError(3_000_000_000, 12_500_000, 2).to_string();
 		assert!(message.contains("3.0"));
+		assert!(message.contains("0.0125"));
 		assert!(message.contains("2 inputs"));
 		assert!(message.contains("'all' selection strategy"));
 		assert!(message.contains("consolidate outputs"));

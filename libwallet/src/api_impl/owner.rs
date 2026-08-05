@@ -21,7 +21,6 @@ use crate::api_impl::foreign::finalize_tx as foreign_finalize;
 use crate::grin_core::core::hash::Hashed;
 use crate::grin_core::core::{FeeFields, Output, OutputFeatures, Transaction};
 use crate::grin_core::libtx::proof;
-use crate::grin_core::libtx::tx_fee;
 use crate::grin_keychain::ViewKey;
 use crate::grin_util::secp::{key::SecretKey, pedersen::Commitment};
 use crate::grin_util::Mutex;
@@ -338,10 +337,7 @@ where
 	) {
 		Ok((coins, _total, amount, fee)) => (amount, fee, coins.len() as u32),
 		Err(e) => match e {
-			Error::BigAmountError(amount, input_count) => {
-				let fee = tx_fee(input_count as usize, change_outputs + 1, 1);
-				(amount - fee, fee, input_count)
-			}
+			Error::BigAmountError(amount, fee, input_count) => (amount - fee, fee, input_count),
 			_ => return Err(e),
 		},
 	};
