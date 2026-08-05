@@ -376,7 +376,7 @@ where
 		amount = wallet_info.amount_currently_spendable;
 	}
 	if !info_updated && !update_skipped {
-		warn!("Wallet info update was failed: node connection error");
+		warn!("Wallet info update failed: node connection error");
 	}
 	if args.estimate_selection_strategies {
 		let strategies = estimate_strategies(args.use_max_amount)
@@ -1000,7 +1000,7 @@ where
 		args.minimum_confirmations,
 	)?;
 	if !info_updated && !update_skipped {
-		warn!("Wallet info update was failed: node connection error");
+		warn!("Wallet info update failed: node connection error");
 	}
 
 	if args.estimate_selection_strategies {
