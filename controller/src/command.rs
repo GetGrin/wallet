@@ -383,10 +383,6 @@ where
 			.iter()
 			.copied()
 			.map(|strategy| {
-				let (_, a, fee, inputs) = owner_api
-					.estimate_max_sendable(keychain_mask, !info_updated, args.minimum_confirmations)
-					.unwrap();
-				debug!("Estimated: {}, {}, {}", a, fee, inputs);
 				let mut init_args = InitTxArgs {
 					src_acct_name: None,
 					amount,
