@@ -336,7 +336,7 @@ where
 		true,
 		&parent_key_id,
 	) {
-		Ok((coins, _total, amount, fee)) => (amount - fee, fee, coins.len() as u32),
+		Ok((coins, _total, amount, fee)) => (amount, fee, coins.len() as u32),
 		Err(e) => match e {
 			Error::BigAmountError(amount, input_count) => {
 				let fee = tx_fee(input_count as usize, change_outputs + 1, 1);
