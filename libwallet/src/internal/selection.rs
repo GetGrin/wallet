@@ -804,24 +804,69 @@ mod tests {
 
 	#[test]
 	fn max_spendable_uses_all_outputs() {
-		let selected = vec![output(1), output(2)];
-		let eligible = vec![output(1), output(2), output(100)];
+		global::set_local_accept_fee_base(1);
+
+		let selected = vec![output(100), output(200)];
+		let eligible = vec![output(100), output(200), output(10000)];
 		let output_len = 1;
 		let max_weight = Transaction::weight_by_iok(2, output_len, 1);
 		assert_eq!(
 			max_spendable_amount(&selected, output_len, max_weight, true),
-			(3, 2)
+			(300, 2)
 		);
 		assert_eq!(
 			max_spendable_amount(&eligible, output_len, max_weight, true),
-			(3, 2)
+			(300, 2)
 		);
 
 		let max_weight = Transaction::weight_by_iok(3, output_len, 1);
 		assert_eq!(
 			max_spendable_amount(&eligible, output_len, max_weight, true),
-			(103, 3)
+			(10300, 3)
 		);
+	}
+
+	#[test]
+	fn max_spendable_fee_amount() {
+		global::set_local_accept_fee_base(1);
+
+		// Can not make txs when fee equals amount and not enough outputs.
+		{
+			let fee = tx_fee(2, 1, 1);
+			let coins = vec![output(13), output(13)];
+			let output_len = 2;
+			let max_weight = Transaction::weight_by_iok(2, output_len, 1);
+			assert_eq!(fee, coins.iter().map(|o| o.value).sum::<u64>());
+			assert_eq!(
+				max_spendable_amount(&coins, output_len, max_weight, false),
+				(0, 0)
+			);
+		}
+
+		// Can not make txs when fee more than amount and not enough outputs.
+		{
+			let fee = tx_fee(2, 1, 1);
+			let coins = vec![output(12), output(13)];
+			let output_len = 2;
+			let max_weight = Transaction::weight_by_iok(2, output_len, 1);
+			assert!(fee > coins.iter().map(|o| o.value).sum::<u64>());
+			assert_eq!(
+				max_spendable_amount(&coins, output_len, max_weight, false),
+				(0, 0)
+			);
+		}
+
+		// Select not all outputs to cover fee.
+		{
+			let fee = tx_fee(3, 1, 1);
+			let coins = vec![output(fee), output(1), output(1)];
+			let output_len = 2;
+			let max_weight = Transaction::weight_by_iok(2, output_len, 1);
+			assert_eq!(
+				max_spendable_amount(&coins, output_len, max_weight, false),
+				(2, 2)
+			);
+		}
 	}
 
 	#[test]
