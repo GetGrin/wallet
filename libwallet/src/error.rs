@@ -384,7 +384,14 @@ mod tests {
 	fn big_amount_message() {
 		let message = Error::BigAmountError(3_000_000_000, 12_500_000, 2).to_string();
 		assert!(message.contains("3.0"));
-		assert!(message.contains("2 inputs"));
+		assert_eq!(
+			message
+				.as_bytes()
+				.windows("2 inputs".len())
+				.filter(|&w| w == "2 inputs".as_bytes())
+				.count(),
+			2
+		);
 		assert!(message.contains("'all' selection strategy"));
 		assert!(message.contains("consolidate outputs"));
 	}
