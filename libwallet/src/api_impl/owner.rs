@@ -18,6 +18,7 @@ use std::cmp;
 use uuid::Uuid;
 
 use crate::api_impl::foreign::finalize_tx as foreign_finalize;
+use crate::grin_core::core::amount_to_hr_string;
 use crate::grin_core::core::hash::Hashed;
 use crate::grin_core::core::{FeeFields, Output, OutputFeatures, Transaction};
 use crate::grin_core::libtx::proof;
@@ -337,7 +338,14 @@ where
 	) {
 		Ok((coins, _total, amount, fee)) => (amount, fee, coins.len() as u32),
 		Err(e) => match e {
-			Error::BigAmountError(amount, fee, input_count) => (amount - fee, fee, input_count),
+			Error::BigAmountError(amount, fee, input_count) => {
+				let amount = amount.checked_sub(fee).ok_or(Error::GenericError(format!(
+					"Transaction amount {} is too small to include fee {}, send lower amount",
+					amount_to_hr_string(amount, true),
+					amount_to_hr_string(fee, true)
+				)))?;
+				(amount, fee, input_count)
+			}
 			_ => return Err(e),
 		},
 	};

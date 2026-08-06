@@ -523,11 +523,16 @@ fn max_spendable_amount(
 		.iter()
 		.map(|output| output.value)
 		.collect::<Vec<_>>();
+	let mut total_value = 0;
 	let (amount, inputs) = values
 		.into_iter()
 		.enumerate()
-		.take_while(|(index, _)| {
-			Transaction::weight_by_iok(*index as u64 + 1, output_len, 1) <= max_tx_weight
+		.take_while(|(index, value)| {
+			let inputs_len = *index as u64 + 1;
+			let fee = tx_fee(inputs_len as usize, 1, 1);
+			total_value += value;
+			Transaction::weight_by_iok(inputs_len, output_len, 1) <= max_tx_weight
+				&& total_value > fee
 		})
 		.fold((0, 0), |(amount, inputs), (_, value)| {
 			(amount + value, inputs + 1)
