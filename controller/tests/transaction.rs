@@ -737,39 +737,42 @@ fn big_amount_error(test_dir: &'static str) -> Result<(), libwallet::Error> {
 	)?;
 
 	// test selecting max amount
-	let res = {
-		let mut w_lock = wallet1.lock();
-		let mut w = w_lock.lc_provider()?.wallet_inst()?;
-		let parent_key_id = w.parent_key_id();
-		let current_height = outputs_num + 5;
-		let max_outputs = 500;
-		let change_outputs = 1;
-		let res = libwallet::select_coins_and_fee(
-			&mut w,
-			reward * outputs_num as u64,
-			true,
-			current_height as u64,
-			min_confirmations,
-			max_outputs,
-			change_outputs,
-			true,
-			&parent_key_id,
-		);
-		res
-	};
+	let result = wallet::controller::owner_single_use(
+		wallet1.clone(),
+		mask1,
+		PathBuf::from(test_dir),
+		|api, m| {
+			api.init_send_tx(
+				m,
+				InitTxArgs {
+					amount: (reward * outputs_num as u64) - (cm * reward),
+					amount_includes_fee: Some(true),
+					minimum_confirmations: 0,
+					max_outputs: 500,
+					num_change_outputs: 1,
+					selection_strategy_is_use_all: true,
+					refresh_outputs_from_node: true,
+					..InitTxArgs::default()
+				},
+			)?;
+			Ok(())
+		},
+	);
+
+	println!("{:?}", result);
 
 	let max_tx_weight = global::max_tx_weight();
 	let tx_weight = Transaction::weight_by_iok(outputs_num as u64, 1, 1);
 
 	assert!(tx_weight > max_tx_weight);
 
-	assert!(res.is_err());
+	assert!(result.is_err());
 	assert!(matches!(
-		res.as_ref().err().unwrap(),
+		result.as_ref().err().unwrap(),
 		libwallet::Error::BigAmountError { .. }
 	));
 
-	match res {
+	match result {
 		Ok(_) => {}
 		Err(e) => match e {
 			libwallet::Error::BigAmountError(a, fee, num_inputs) => {
