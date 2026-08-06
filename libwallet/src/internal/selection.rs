@@ -519,10 +519,19 @@ fn max_spendable_amount(
 	max_tx_weight: u64,
 	amount_includes_fee: bool,
 ) -> (u64, u32) {
-	let values = outputs
+	let mut values: Vec<u64> = outputs
 		.iter()
 		.map(|output| output.value)
-		.collect::<Vec<_>>();
+		.enumerate()
+		.take_while(|(index, _)| {
+			Transaction::weight_by_iok(*index as u64 + 1, output_len, 1) <= max_tx_weight
+		})
+		.map(|(_, value)| value)
+		.collect();
+
+	// sort outputs by decreasing value to calculate the best fee
+	values.sort_by_key(|out| -(*out as i64));
+
 	let mut total_value = 0;
 	let (amount, inputs) = values
 		.into_iter()
@@ -531,12 +540,12 @@ fn max_spendable_amount(
 			let inputs_len = *index as u64 + 1;
 			let fee = tx_fee(inputs_len as usize, 1, 1);
 			total_value += value;
-			Transaction::weight_by_iok(inputs_len, output_len, 1) <= max_tx_weight
-				&& total_value > fee
+			total_value > fee
 		})
 		.fold((0, 0), |(amount, inputs), (_, value)| {
 			(amount + value, inputs + 1)
 		});
+
 	let amount = if amount_includes_fee {
 		amount
 	} else {
