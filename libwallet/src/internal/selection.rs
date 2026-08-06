@@ -530,21 +530,19 @@ fn max_spendable_amount(
 		.collect();
 
 	// sort outputs by decreasing value to calculate the best fee
-	values.sort_by_key(|out| -(*out as i64));
+	values.sort_by(|a, b| b.cmp(a));
 
 	let mut total_value = 0;
-	let (amount, inputs) = values
-		.into_iter()
-		.enumerate()
-		.take_while(|(index, value)| {
-			let inputs_len = *index as u64 + 1;
-			let fee = tx_fee(inputs_len as usize, 1, 1);
-			total_value += value;
-			total_value > fee
-		})
-		.fold((0, 0), |(amount, inputs), (_, value)| {
-			(amount + value, inputs + 1)
-		});
+	let mut amount = 0;
+	let mut inputs = 0;
+	for (index, value) in values.into_iter().enumerate() {
+		let inputs_len = index + 1;
+		total_value += value;
+		if total_value > tx_fee(inputs_len, 1, 1) {
+			amount = total_value;
+			inputs = inputs_len as u32;
+		}
+	}
 
 	let amount = if amount_includes_fee {
 		amount
@@ -888,6 +886,37 @@ mod tests {
 		assert_eq!(
 			max_spendable_amount(&coins, output_len, max_weight, false),
 			(3_000_000_000 - tx_fee(2, 1, 1), 2)
+		);
+	}
+
+	#[test]
+	fn covers_fee_with_multiple_outputs() {
+		global::set_local_accept_fee_base(1);
+		let coins = vec![output(20), output(20)];
+		let output_len = 1;
+		let max_weight = Transaction::weight_by_iok(2, output_len, 1);
+
+		assert_eq!(
+			max_spendable_amount(&coins, output_len, max_weight, true),
+			(40, 2)
+		);
+		assert_eq!(
+			max_spendable_amount(&coins, output_len, max_weight, false),
+			(40 - tx_fee(2, 1, 1), 2)
+		);
+	}
+
+	#[test]
+	fn sorts_large_values() {
+		global::set_local_accept_fee_base(1);
+		let high_value = 1_u64 << 63;
+		let coins = vec![output(1), output(high_value)];
+		let output_len = 1;
+		let max_weight = Transaction::weight_by_iok(2, output_len, 1);
+
+		assert_eq!(
+			max_spendable_amount(&coins, output_len, max_weight, true),
+			(high_value + 1, 2)
 		);
 	}
 }
