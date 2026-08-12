@@ -21,10 +21,12 @@ use crate::grin_util::secp::pedersen;
 use crate::slate_versions::ser as dalek_ser;
 use crate::slate_versions::SlateVersion;
 use crate::types::OutputData;
-use crate::SlatepackAddress;
+use crate::{Error, NodeClient, Slate, SlatepackAddress, WalletBackend};
 
 use chrono::prelude::*;
 use ed25519_dalek::Signature as DalekSignature;
+use grin_keychain::Keychain;
+use grin_util::secp::SecretKey;
 
 pub use crate::mwixnet::{Hop, MixnetReqCreationParams, SwapReq};
 
@@ -66,6 +68,9 @@ pub struct InitTxArgs {
 	/// as many outputs as are needed to meet the amount, (and no more) starting with the smallest
 	/// value outputs.
 	pub selection_strategy_is_use_all: bool,
+	/// Flag to refresh outputs from node.
+	#[serde(default = "default_refresh_outputs_from_node")]
+	pub refresh_outputs_from_node: bool,
 	/// Optionally set the output target slate version (acceptable
 	/// down to the minimum slate version compatible with the current. If `None` the slate
 	/// is generated with the latest version.
@@ -102,7 +107,7 @@ pub struct InitTxSendArgs {
 	/// Whether to use dandelion when posting. If false, skip the dandelion relay
 	pub fluff: bool,
 	/// If set, skip the Slatepack TOR send attempt
-	pub skip_tor: bool,
+	pub skip_tor: Option<bool>,
 }
 
 impl Default for InitTxArgs {
@@ -115,6 +120,7 @@ impl Default for InitTxArgs {
 			max_outputs: 500,
 			num_change_outputs: 1,
 			selection_strategy_is_use_all: true,
+			refresh_outputs_from_node: true,
 			target_slate_version: None,
 			ttl_blocks: None,
 			estimate_only: Some(false),
@@ -343,4 +349,61 @@ pub struct BuiltOutput {
 	pub key_id: Identifier,
 	/// Output
 	pub output: Output,
+}
+
+fn default_refresh_outputs_from_node() -> bool {
+	true
+}
+
+/// Update transaction slate state.
+pub fn update_tx_slate_state<C, K>(
+	wallet: &mut WalletBackend<C, K>,
+	keychain_mask: Option<&SecretKey>,
+	parent_key_id: &Identifier,
+	slate: &Slate,
+) -> Result<(), Error>
+where
+	C: NodeClient,
+	K: Keychain,
+{
+	let mut bad_records = 0;
+	let tx = wallet
+		.tx_log_iter()?
+		.filter(|tx| {
+			if tx.is_err() {
+				bad_records += 1;
+			}
+			tx.is_ok()
+		})
+		.map(|tx| tx.unwrap())
+		.find(|tx| tx.tx_slate_id == Some(slate.id));
+	if let Some(mut tx) = tx {
+		let mut batch = wallet.batch(keychain_mask)?;
+		tx.tx_slate_state = Some(slate.state.clone());
+		batch.save_tx_log_entry(tx.clone(), parent_key_id)?;
+		batch.commit()?;
+	} else {
+		return Err(Error::Backend(format!(
+			"Tx log entry with slate id {} not found, there are {} bad tx log records",
+			slate.id, bad_records
+		)));
+	}
+	Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+	use super::InitTxArgs;
+
+	#[test]
+	fn legacy_refresh_default() {
+		let mut value = serde_json::to_value(InitTxArgs::default()).unwrap();
+		value
+			.as_object_mut()
+			.unwrap()
+			.remove("refresh_outputs_from_node");
+
+		let args: InitTxArgs = serde_json::from_value(value).unwrap();
+		assert!(args.refresh_outputs_from_node);
+	}
 }

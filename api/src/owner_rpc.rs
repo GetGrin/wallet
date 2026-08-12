@@ -36,6 +36,7 @@ use easy_jsonrpc_mw;
 use grin_wallet_util::OnionV3Address;
 use rand::thread_rng;
 use std::convert::TryFrom;
+use std::path::PathBuf;
 use std::sync::Arc;
 use std::time::Duration;
 
@@ -228,6 +229,51 @@ pub trait OwnerRpc {
 	) -> Result<(bool, Vec<OutputCommitMapping>), Error>;
 
 	/**
+	Networked version of [Owner::estimate_max_sendable](struct.Owner.html#method.estimate_max_sendable).
+
+	# Json rpc example
+
+	```
+	# grin_wallet_api::doctest_helper_json_rpc_owner_assert_response!(
+	# r#"
+	{
+		"jsonrpc": "2.0",
+		"method": "estimate_max_sendable",
+		"params": {
+			"token": "d202964900000000d302964900000000d402964900000000d502964900000000",
+			"refresh_from_node": true,
+			"minimum_confirmations": 1
+		},
+		"id": 1
+	}
+	# "#
+	# ,
+	# r#"
+	{
+		"id": 1,
+		"jsonrpc": "2.0",
+		"result": {
+			   "Ok": [
+				 true,
+				 59987500000,
+				 12500000,
+				 1
+			   ]
+		  }
+	}
+	# "#
+	# , 4, false, false, false, false);
+	```
+	 */
+
+	fn estimate_max_sendable(
+		&self,
+		token: Token,
+		refresh_from_node: bool,
+		minimum_confirmations: u64,
+	) -> Result<(bool, u64, u64, u32), Error>;
+
+	/**
 	Networked version of [Owner::retrieve_txs](struct.Owner.html#method.retrieve_txs).
 
 	# Json rpc example
@@ -272,6 +318,7 @@ pub trait OwnerRpc {
 			  "stored_tx": null,
 			  "ttl_cutoff_height": null,
 			  "tx_slate_id": null,
+			  "tx_slate_state": null,
 			  "payment_proof": null,
 			  "reverted_after": null,
 			  "tx_type": "ConfirmedCoinbase"
@@ -294,6 +341,7 @@ pub trait OwnerRpc {
 			  "payment_proof": null,
 			  "reverted_after": null,
 			  "tx_slate_id": null,
+			  "tx_slate_state": null,
 			  "tx_type": "ConfirmedCoinbase"
 			}
 		  ]
@@ -363,6 +411,7 @@ pub trait OwnerRpc {
 			  "stored_tx": null,
 			  "ttl_cutoff_height": null,
 			  "tx_slate_id": null,
+			  "tx_slate_state": null,
 			  "payment_proof": null,
 			  "reverted_after": null,
 			  "tx_type": "ConfirmedCoinbase"
@@ -385,6 +434,7 @@ pub trait OwnerRpc {
 			  "payment_proof": null,
 			  "reverted_after": null,
 			  "tx_slate_id": null,
+			  "tx_slate_state": null,
 			  "tx_type": "ConfirmedCoinbase"
 			}
 		  ]
@@ -456,7 +506,7 @@ pub trait OwnerRpc {
 	) -> Result<(bool, WalletInfo), Error>;
 
 	/**
-	;Networked version of [Owner::init_send_tx](struct.Owner.html#method.init_send_tx).
+	Networked version of [Owner::init_send_tx](struct.Owner.html#method.init_send_tx).
 
 	```
 		# grin_wallet_api::doctest_helper_json_rpc_owner_assert_response!(
@@ -473,6 +523,7 @@ pub trait OwnerRpc {
 					"max_outputs": 500,
 					"num_change_outputs": 1,
 					"selection_strategy_is_use_all": true,
+					"refresh_outputs_from_node": true,
 					"target_slate_version": null,
 					"payment_proof_recipient_address": "tgrin1xtxavwfgs48ckf3gk8wwgcndmn0nt4tvkl8a7ltyejjcy2mc6nfs9gm2lp",
 					"ttl_blocks": null,
@@ -596,6 +647,7 @@ pub trait OwnerRpc {
 					"max_outputs": 500,
 					"num_change_outputs": 1,
 					"selection_strategy_is_use_all": true,
+					"refresh_outputs_from_node": true,
 					"target_slate_version": null,
 					"payment_proof_recipient_address": null,
 					"ttl_blocks": null,
@@ -1118,54 +1170,54 @@ pub trait OwnerRpc {
 	fn node_height(&self, token: Token) -> Result<NodeHeightResult, Error>;
 
 	/**
-		Initializes the secure JSON-RPC API. This function must be called and a shared key
-		established before any other OwnerAPI JSON-RPC function can be called.
+	Initializes the secure JSON-RPC API. This function must be called and a shared key
+	established before any other OwnerAPI JSON-RPC function can be called.
 
-		The shared key will be derived using ECDH with the provided public key on the secp256k1 curve. This
-		function will return its public key used in the derivation, which the caller should multiply by its
-		private key to derive the shared key.
+	The shared key will be derived using ECDH with the provided public key on the secp256k1 curve. This
+	function will return its public key used in the derivation, which the caller should multiply by its
+	private key to derive the shared key.
 
-		Once the key is established, all further requests and responses are encrypted and decrypted with the
-		following parameters:
-		* AES-256 in GCM mode with 128-bit tags and 96 bit nonces
-		* 12 byte nonce which must be included in each request/response to use on the decrypting side
-		* Empty vector for additional data
-		* Suffix length = AES-256 GCM mode tag length = 16 bytes
-		*
+	Once the key is established, all further requests and responses are encrypted and decrypted with the
+	following parameters:
+	* AES-256 in GCM mode with 128-bit tags and 96 bit nonces
+	* 12 byte nonce which must be included in each request/response to use on the decrypting side
+	* Empty vector for additional data
+	* Suffix length = AES-256 GCM mode tag length = 16 bytes
+	*
 
-		Fully-formed JSON-RPC requests (as documented) should be encrypted using these parameters, encoded
-		into base64 and included with the one-time nonce in a request for the `encrypted_request_v3` method
-		as follows:
+	Fully-formed JSON-RPC requests (as documented) should be encrypted using these parameters, encoded
+	into base64 and included with the one-time nonce in a request for the `encrypted_request_v3` method
+	as follows:
 
-		```
-		# let s = r#"
-		{
-			 "jsonrpc": "2.0",
-			 "method": "encrypted_request_v3",
-			 "id": "1",
-			 "params": {
-					"nonce": "ef32...",
-					"body_enc": "e0bcd..."
-			 }
-		}
-		# "#;
-		```
+	```
+	# let s = r#"
+	{
+		 "jsonrpc": "2.0",
+		 "method": "encrypted_request_v3",
+		 "id": "1",
+		 "params": {
+				"nonce": "ef32...",
+				"body_enc": "e0bcd..."
+		 }
+	}
+	# "#;
+	```
 
-		With a typical response being:
+	With a typical response being:
 
-		```
-		# let s = r#"{
-		{
-			 "jsonrpc": "2.0",
-			 "method": "encrypted_response_v3",
-			 "id": "1",
-			 "Ok": {
-					"nonce": "340b...",
-					"body_enc": "3f09c..."
-			 }
-		}
-		# }"#;
-		```
+	```
+	# let s = r#"{
+	{
+		 "jsonrpc": "2.0",
+		 "method": "encrypted_response_v3",
+		 "id": "1",
+		 "Ok": {
+				"nonce": "340b...",
+				"body_enc": "3f09c..."
+		 }
+	}
+	# }"#;
+	```
 
 	*/
 
@@ -1203,6 +1255,9 @@ pub trait OwnerRpc {
 
 	/**
 	Networked version of [Owner::set_top_level_directory](struct.Owner.html#method.set_top_level_directory).
+
+	The wallet must be closed and the updater stopped before calling this method. Running listeners
+	should be restarted after opening the wallet from the new directory.
 	```
 	# grin_wallet_api::doctest_helper_json_rpc_owner_assert_response!(
 	# r#"
@@ -1713,7 +1768,7 @@ pub trait OwnerRpc {
 		"params": {
 			"token": "d202964900000000d302964900000000d402964900000000d502964900000000",
 			"secret_indices": [0],
-			"message": "BEGINSLATEPACK. 8GQrdcwdLKJD28F 3a9siP7ZhZgAh7w BR2EiZHza5WMWmZ Cc8zBUemrrYRjhq j3VBwA8vYnvXXKU BDmQBN2yKgmR8mX UzvXHezfznA61d7 qFZYChhz94vd8Ew NEPLz7jmcVN2C3w wrfHbeiLubYozP2 uhLouFiYRrbe3fQ 4uhWGfT3sQYXScT dAeo29EaZJpfauh j8VL5jsxST2SPHq nzXFC2w9yYVjt7D ju7GSgHEp5aHz9R xstGbHjbsb4JQod kYLuELta1ohUwDD pvjhyJmsbLcsPei k5AQhZsJ8RJGBtY bou6cU7tZeFJvor 4LB9CBfFB3pmVWD vSLd5RPS75dcnHP nbXD8mSDZ8hJS2Q A9wgvppWzuWztJ2 dLUU8f9tLJgsRBw YZAs71HiVeg7. ENDSLATEPACK."
+			"message": "BEGINSLATEPACK. t9EcGgrKr1GFCQB SK2jPCxME6Hgpqx bntpQm3zKFycoPY nW4UeoL4KQ7ExNK At6EQsvpz6MjUs8 6WG8KHEbMfqufJQ ZJTw2gkcdJmJjiJ f29oGgYqqXDZox4 ujPSjrtoxCN4h3e i1sZ8dYsm3dPeXL 7VQLsYNjAefciqj ZJXPm4Pqd7VDdd4 okGBGBu3YJvYzT6 arAxeCEx66us31h AJLcDweFwyWBkW5 J1DLiYAjt5ftFTo CjpfW9KjiLq2LM5 jepXWEHJPSDAYVK 4macDZUhRbJiG6E hrQcPrJBVC716mb Hw5E1PFrE6on5wq oEmrS4j9vaB5nw8 Z9ZyXvPc2LN7tER yt6pSHZeY9EpYdY zv4bthzfRfF8ePT TMeMpV2gpgyRXQa CPD2TR. ENDSLATEPACK."
 		},
 		"id": 1
 	}
@@ -1857,9 +1912,9 @@ pub trait OwnerRpc {
 			"proof": {
 				"amount": "60000000000",
 				"excess": "09eac5f5872fa5e08e0c29fd900f1b8f77ff3ad1d0d1c46aeb202cbf92363fe0af",
-				"recipient_address": "slatepack10qlk22rxjap2ny8qltc2tl996kenxr3hhwuu6hrzs6tdq08yaqgqnlumr7",
+				"recipient_address": "tgrin10qlk22rxjap2ny8qltc2tl996kenxr3hhwuu6hrzs6tdq08yaqgqq6t83r",
 				"recipient_sig": "02868f2d2b983981f8f98043701687a8531ed2de564ea3df48e9e7e0229ccbe8359efe506896df2efbe3528e977252c50e4a41ca3cc9896e7c5a30bbb1d33604",
-				"sender_address": "slatepack1xtxavwfgs48ckf3gk8wwgcndmn0nt4tvkl8a7ltyejjcy2mc6nfskdvkdu",
+				"sender_address": "tgrin1xtxavwfgs48ckf3gk8wwgcndmn0nt4tvkl8a7ltyejjcy2mc6nfs9gm2lp",
 				"sender_sig": "c511764f3f61ed3d1cbca9514df8bc6811fad5662b1cb0e0587b9c9e49db9f33183cce71af6cb24b507fabf525a2bc405c6e84e63a60334edff0b451ae5e6102"
 			}
 		},
@@ -2058,6 +2113,20 @@ where
 		)
 	}
 
+	fn estimate_max_sendable(
+		&self,
+		token: Token,
+		refresh_from_node: bool,
+		minimum_confirmations: u64,
+	) -> Result<(bool, u64, u64, u32), Error> {
+		Owner::estimate_max_sendable(
+			self,
+			(&token.keychain_mask).as_ref(),
+			refresh_from_node,
+			minimum_confirmations,
+		)
+	}
+
 	fn retrieve_txs(
 		&self,
 		token: Token,
@@ -2137,6 +2206,14 @@ where
 		VersionedSlate::into_version(out_slate, version)
 	}
 
+	fn tx_lock_outputs(&self, token: Token, in_slate: VersionedSlate) -> Result<(), Error> {
+		Owner::tx_lock_outputs(
+			self,
+			(&token.keychain_mask).as_ref(),
+			&Slate::from(in_slate),
+		)
+	}
+
 	fn finalize_tx(&self, token: Token, in_slate: VersionedSlate) -> Result<VersionedSlate, Error> {
 		let out_slate = Owner::finalize_tx(
 			self,
@@ -2147,11 +2224,12 @@ where
 		VersionedSlate::into_version(out_slate, version)
 	}
 
-	fn tx_lock_outputs(&self, token: Token, in_slate: VersionedSlate) -> Result<(), Error> {
-		Owner::tx_lock_outputs(
+	fn post_tx(&self, token: Token, slate: VersionedSlate, fluff: bool) -> Result<(), Error> {
+		Owner::post_tx(
 			self,
 			(&token.keychain_mask).as_ref(),
-			&Slate::from(in_slate),
+			&Slate::from(slate),
+			fluff,
 		)
 	}
 
@@ -2183,15 +2261,6 @@ where
 			}
 			None => Ok(None),
 		}
-	}
-
-	fn post_tx(&self, token: Token, slate: VersionedSlate, fluff: bool) -> Result<(), Error> {
-		Owner::post_tx(
-			self,
-			(&token.keychain_mask).as_ref(),
-			&Slate::from(slate),
-			fluff,
-		)
 	}
 
 	fn get_rewind_hash(&self, token: Token) -> Result<String, Error> {
@@ -2419,7 +2488,7 @@ where
 	}
 
 	fn set_tor_config(&self, tor_config: Option<TorConfig>) -> Result<(), Error> {
-		Owner::set_tor_config(self, tor_config);
+		Owner::set_tor_config(self, tor_config)?;
 		Ok(())
 	}
 
@@ -2483,6 +2552,7 @@ pub fn run_doctest_owner(
 ) -> Result<Option<serde_json::Value>, String> {
 	use easy_jsonrpc_mw::Handler;
 	use grin_keychain::ExtKeychain;
+	use grin_wallet_config::initial_setup_wallet;
 	use grin_wallet_impls::test_framework::{self, LocalWalletClient, WalletProxy};
 	use grin_wallet_impls::{DefaultLCProvider, DefaultWalletImpl};
 	use grin_wallet_libwallet::{api_impl, WalletInst};
@@ -2494,7 +2564,15 @@ pub fn run_doctest_owner(
 
 	util::init_test_logger();
 	let _ = fs::remove_dir_all(test_dir);
-	global::set_local_chain_type(ChainTypes::AutomatedTesting);
+	global::set_global_chain_type(ChainTypes::AutomatedTesting);
+
+	let _ = fs::create_dir_all(test_dir);
+	let config = initial_setup_wallet(
+		&ChainTypes::AutomatedTesting,
+		Some(PathBuf::from(test_dir)),
+		false,
+	)
+	.unwrap();
 
 	let mut wallet_proxy: WalletProxy<
 		DefaultLCProvider<LocalWalletClient, ExtKeychain>,
@@ -2503,11 +2581,11 @@ pub fn run_doctest_owner(
 	> = WalletProxy::new(test_dir);
 	let chain = wallet_proxy.chain.clone();
 
-	let rec_phrase_1 = util::ZeroingString::from(
+	let rec_phrase_1 = ZeroingString::from(
 		"fat twenty mean degree forget shell check candy immense awful \
 		 flame next during february bulb bike sun wink theory day kiwi embrace peace lunch",
 	);
-	let empty_string = util::ZeroingString::from("");
+	let empty_string = ZeroingString::from("");
 
 	let client1 = LocalWalletClient::new("wallet1", wallet_proxy.tx.clone());
 	let mut wallet1 =
@@ -2542,7 +2620,7 @@ pub fn run_doctest_owner(
 
 	let mut slate_outer = Slate::blank(2, false);
 
-	let rec_phrase_2 = util::ZeroingString::from(
+	let rec_phrase_2 = ZeroingString::from(
 		"hour kingdom ripple lunch razor inquiry coyote clay stamp mean \
 		 sell finish magic kid tiny wage stand panther inside settle feed song hole exile",
 	);
@@ -2611,7 +2689,8 @@ pub fn run_doctest_owner(
 			true => {
 				let address = "783f6528669742a990e0faf0a5fca5d5b3330e37bbb9cd5c628696d03ce4e810";
 				let address = OnionV3Address::try_from(address).unwrap();
-				Some(SlatepackAddress::try_from(address).unwrap())
+				let sp = SlatepackAddress::try_from(address).unwrap();
+				Some(sp)
 			}
 			false => None,
 		};
@@ -2625,26 +2704,25 @@ pub fn run_doctest_owner(
 			payment_proof_recipient_address: proof_address,
 			..Default::default()
 		};
-		let mut slate =
-			api_impl::owner::init_send_tx(&mut **w, (&mask1).as_ref(), args, true).unwrap();
+		let mut slate = api_impl::owner::init_send_tx(w, (&mask1).as_ref(), args, true).unwrap();
 		println!("INITIAL SLATE");
 		println!("{}", serde_json::to_string_pretty(&slate).unwrap());
 		{
 			let mut w_lock = wallet2.lock();
 			let w2 = w_lock.lc_provider().unwrap().wallet_inst().unwrap();
-			slate = api_impl::foreign::receive_tx(&mut **w2, (&mask2).as_ref(), &slate, None, true)
-				.unwrap();
+			slate =
+				api_impl::foreign::receive_tx(w2, (&mask2).as_ref(), &slate, None, true).unwrap();
 			w2.close().unwrap();
 		}
 		// Spit out slate for input to finalize_tx
 		if lock_tx {
 			println!("LOCKING TX");
-			api_impl::owner::tx_lock_outputs(&mut **w, (&mask1).as_ref(), &slate).unwrap();
+			api_impl::owner::tx_lock_outputs(w, (&mask1).as_ref(), &slate).unwrap();
 		}
 		println!("RECEIPIENT SLATE");
 		println!("{}", serde_json::to_string_pretty(&slate).unwrap());
 		if finalize_tx {
-			slate = api_impl::owner::finalize_tx(&mut **w, (&mask1).as_ref(), &slate).unwrap();
+			slate = api_impl::owner::finalize_tx(w, (&mask1).as_ref(), &slate).unwrap();
 			error!("FINALIZED TX SLATE");
 			println!("{}", serde_json::to_string_pretty(&slate).unwrap());
 		}
@@ -2666,8 +2744,11 @@ pub fn run_doctest_owner(
 		);
 	}
 
-	let mut api_owner = Owner::new(wallet1, None);
+	let mut api_owner = Owner::new(wallet1, None, config.config_file_path);
 	api_owner.doctest_mode = true;
+	if request["method"] == "set_top_level_directory" {
+		api_owner.close_wallet(None).unwrap();
+	}
 	let owner_api = &api_owner as &dyn OwnerRpc;
 	let res = owner_api.handle_request(request).as_option();
 	let _ = fs::remove_dir_all(test_dir);

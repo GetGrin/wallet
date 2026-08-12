@@ -76,14 +76,14 @@ macro_rules! open_wallet_and_add {
 pub fn clean_output_dir(test_dir: &str) {
 	let path = std::path::Path::new(test_dir);
 	if path.is_dir() {
-		remove_dir_all::remove_dir_all(test_dir).unwrap();
+		std::fs::remove_dir_all(test_dir).unwrap();
 	}
 }
 
 pub fn setup(test_dir: &str) {
 	util::init_test_logger();
 	clean_output_dir(test_dir);
-	global::set_local_chain_type(ChainTypes::AutomatedTesting);
+	setup_global_chain_type();
 }
 
 /// Some tests require the global chain_type to be configured due to threads being spawned internally.
@@ -91,14 +91,14 @@ pub fn setup(test_dir: &str) {
 /// leaks across multiple tests and will likely have unintended consequences.
 #[allow(dead_code)]
 pub fn setup_global_chain_type() {
-	global::init_global_chain_type(global::ChainTypes::AutomatedTesting);
+	global::init_global_chain_type(ChainTypes::AutomatedTesting);
 }
 
 pub fn create_wallet_proxy(
 	test_dir: &str,
 ) -> WalletProxy<
 	'_,
-	DefaultLCProvider<'_, LocalWalletClient, ExtKeychain>,
+	DefaultLCProvider<LocalWalletClient, ExtKeychain>,
 	LocalWalletClient,
 	ExtKeychain,
 > {
@@ -117,7 +117,7 @@ pub fn create_local_wallet(
 			Box<
 				dyn WalletInst<
 					'static,
-					DefaultLCProvider<'static, LocalWalletClient, ExtKeychain>,
+					DefaultLCProvider<LocalWalletClient, ExtKeychain>,
 					LocalWalletClient,
 					ExtKeychain,
 				>,
@@ -129,7 +129,7 @@ pub fn create_local_wallet(
 	let mut wallet = Box::new(DefaultWalletImpl::<LocalWalletClient>::new(client).unwrap())
 		as Box<
 			dyn WalletInst<
-				DefaultLCProvider<'static, LocalWalletClient, ExtKeychain>,
+				DefaultLCProvider<LocalWalletClient, ExtKeychain>,
 				LocalWalletClient,
 				ExtKeychain,
 			>,
@@ -156,7 +156,7 @@ pub fn open_local_wallet(
 			Box<
 				dyn WalletInst<
 					'static,
-					DefaultLCProvider<'static, LocalWalletClient, ExtKeychain>,
+					DefaultLCProvider<LocalWalletClient, ExtKeychain>,
 					LocalWalletClient,
 					ExtKeychain,
 				>,
@@ -168,7 +168,7 @@ pub fn open_local_wallet(
 	let mut wallet = Box::new(DefaultWalletImpl::<LocalWalletClient>::new(client).unwrap())
 		as Box<
 			dyn WalletInst<
-				DefaultLCProvider<'static, LocalWalletClient, ExtKeychain>,
+				DefaultLCProvider<LocalWalletClient, ExtKeychain>,
 				LocalWalletClient,
 				ExtKeychain,
 			>,
