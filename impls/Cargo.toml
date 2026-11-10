@@ -1,6 +1,6 @@
 [package]
 name = "grin_wallet_impls"
-version = "5.5.0"
+version = "5.5.1"
 authors = ["Grin Developers <mimblewimble@lists.launchpad.net>"]
 description = "Concrete types derived from libwallet traits"
 license = "Apache-2.0"
@@ -47,16 +47,16 @@ hyper-util = { version = "0.1.20", features = ["tokio"] }
 http-body-util = "0.1.3"
 bytes = "1.11.1"
 
-grin_wallet_util = { path = "../util", version = "5.5.0" }
-grin_wallet_config = { path = "../config", version = "5.5.0" }
-grin_wallet_libwallet = { path = "../libwallet", version = "5.5.0" }
+grin_wallet_util = { path = "../util", version = "5.5.1" }
+grin_wallet_config = { path = "../config", version = "5.5.1" }
+grin_wallet_libwallet = { path = "../libwallet", version = "5.5.1" }
 
 ##### Grin Imports
 
-grin_core = { path = "../grin/core"}
-grin_keychain = { path = "../grin/keychain"}
-grin_chain = { path = "../grin/chain"}
-grin_util = { path = "../grin/util"}
-grin_api = { path = "../grin/api"}
+grin_core = { workspace = true }
+grin_keychain = { workspace = true }
+grin_chain = { workspace = true }
+grin_util = { workspace = true }
+grin_api = { workspace = true }
 
 #####

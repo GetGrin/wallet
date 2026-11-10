@@ -21,6 +21,7 @@ use uuid::Uuid;
 
 use crate::blake2::blake2b::{Blake2b, Blake2bResult};
 
+use crate::slatepack::SlatepackAddressIndex;
 use crate::{
 	AcctPathMapping, Context, Error, NodeClient, OutputData, ScannedBlockInfo, TxLogEntry,
 	WalletInitStatus,
@@ -44,19 +45,21 @@ const CONFIRMED_HEIGHT_PREFIX: u8 = b'c';
 const PRIVATE_TX_CONTEXT_PREFIX: u8 = b'p';
 const TX_LOG_ENTRY_PREFIX: u8 = b't';
 const TX_LOG_ID_PREFIX: u8 = b'i';
+const TX_ADDRESS_INDEX_PREFIX: u8 = b's';
 const ACCOUNT_PATH_MAPPING_PREFIX: u8 = b'a';
 const LAST_SCANNED_BLOCK: u8 = b'l';
 const LAST_SCANNED_KEY: &str = "LAST_SCANNED_KEY";
 const WALLET_INIT_STATUS: u8 = b'w';
 const WALLET_INIT_STATUS_KEY: &str = "WALLET_INIT_STATUS";
 
-const DB_PREFIXES: [u8; 9] = [
+const DB_PREFIXES: [u8; 10] = [
 	OUTPUT_PREFIX,
 	DERIV_PREFIX,
 	CONFIRMED_HEIGHT_PREFIX,
 	PRIVATE_TX_CONTEXT_PREFIX,
 	TX_LOG_ENTRY_PREFIX,
 	TX_LOG_ID_PREFIX,
+	TX_ADDRESS_INDEX_PREFIX,
 	ACCOUNT_PATH_MAPPING_PREFIX,
 	LAST_SCANNED_BLOCK,
 	WALLET_INIT_STATUS,
@@ -77,7 +80,7 @@ where
 	// h(root_key|slate_id|"blind")
 	let mut hasher = Blake2b::new(SECRET_KEY_SIZE);
 	hasher.update(&root_key.0[..]);
-	hasher.update(&slate_id[..]);
+	hasher.update(slate_id);
 	hasher.update(&b"blind"[..]);
 	let blind_xor_key = hasher.finalize();
 	let mut ret_blind = [0; SECRET_KEY_SIZE];
@@ -86,7 +89,7 @@ where
 	// h(root_key|slate_id|"nonce")
 	let mut hasher = Blake2b::new(SECRET_KEY_SIZE);
 	hasher.update(&root_key.0[..]);
-	hasher.update(&slate_id[..]);
+	hasher.update(slate_id);
 	hasher.update(&b"nonce"[..]);
 	let nonce_xor_key = hasher.finalize();
 	let mut ret_nonce = [0; SECRET_KEY_SIZE];
@@ -108,8 +111,8 @@ where
 	pub keychain: Option<K>,
 	/// Check value for XORed keychain seed
 	pub master_checksum: Box<Option<Blake2bResult>>,
-	/// Parent path to use by default for output operations
-	parent_key_id: Identifier,
+	/// BIP32 account path to use by default for output operations
+	active_account: AcctPathMapping,
 	/// wallet to node client
 	w2n_client: C,
 }
@@ -138,30 +141,45 @@ where
 
 		// Make sure default wallet derivation path always exists
 		// as well as path (so it can be retrieved by batches to know where to store
-		// completed transactions, for reference
+		// completed transactions, for reference)
 		let default_account = AcctPathMapping {
-			label: "default".to_owned(),
+			label: "default".to_string(),
 			path: WalletBackend::<C, K>::default_path(),
+			info: None,
+			current: Some(true),
 		};
-
 		{
 			let mut batch = store.batch()?;
-			batch.put_ser(
+			let saved_default = batch.get_ser::<AcctPathMapping>(
 				Some(ACCOUNT_PATH_MAPPING_PREFIX),
 				default_account.label.as_bytes(),
-				&default_account,
+				None,
 			)?;
-			batch.commit()?;
+			if saved_default.is_none() {
+				batch.put_ser(
+					Some(ACCOUNT_PATH_MAPPING_PREFIX),
+					default_account.label.as_bytes(),
+					&default_account,
+				)?;
+				batch.commit()?;
+			}
 		}
 
-		let res = WalletBackend {
+		let mut res = WalletBackend {
 			db: store,
 			data_file_dir: data_file_dir.to_owned(),
 			keychain: None,
 			master_checksum: Box::new(None),
-			parent_key_id: WalletBackend::<C, K>::default_path(),
+			active_account: default_account,
 			w2n_client: n_client,
 		};
+
+		// Set current active account
+		let active = res.acct_path_iter()?.find(|a| a.current.unwrap_or(false));
+		if let Some(a) = active {
+			res.active_account = a;
+		}
+
 		Ok(res)
 	}
 
@@ -192,7 +210,7 @@ where
 		let root_key = k.derive_key(0, &K::root_key_id(), SwitchCommitmentType::Regular)?;
 		let mut hasher = Blake2b::new(SECRET_KEY_SIZE);
 		hasher.update(&root_key.0[..]);
-		self.master_checksum = Box::new(Some(hasher.finalize()));
+		*self.master_checksum = Some(hasher.finalize());
 
 		let mask_value = {
 			match mask {
@@ -202,9 +220,9 @@ where
 					let mask_value = match use_test_rng {
 						true => {
 							let mut test_rng = StepRng::new(1_234_567_890_u64, 1);
-							SecretKey::new(&k.secp(), &mut test_rng)
+							SecretKey::new(k.secp(), &mut test_rng)
 						}
-						false => SecretKey::new(&k.secp(), &mut thread_rng()),
+						false => SecretKey::new(k.secp(), &mut thread_rng()),
 					};
 					k.mask_master_key(&mask_value)?;
 					Some(mask_value)
@@ -267,7 +285,7 @@ where
 		} else {*/
 		Ok(Some(
 			self.keychain(keychain_mask)?
-				.commit(amount, &id, SwitchCommitmentType::Regular)?
+				.commit(amount, id, SwitchCommitmentType::Regular)?
 				.0
 				.to_vec()
 				.to_hex(), // TODO: proper support for different switch commitment schemes
@@ -275,27 +293,65 @@ where
 		/*}*/
 	}
 
-	/// Set parent key id by stored account name.
-	pub fn set_parent_key_id_by_name(&mut self, label: &str) -> Result<(), Error> {
+	/// Set current active account by stored account name.
+	pub fn set_active_account(
+		&mut self,
+		keychain_mask: Option<&SecretKey>,
+		label: &str,
+	) -> Result<(), Error> {
+		let res = self.acct_path_iter()?.find(|l| l.label == label);
+		match res {
+			None => Err(Error::UnknownAccountLabel(label.to_string())),
+			Some(mut a) => {
+				let mut batch = self.batch(keychain_mask)?;
+				let current = batch
+					.acct_path_iter()?
+					.filter(|a| a.current.unwrap_or(false))
+					.collect::<Vec<AcctPathMapping>>();
+				for mut a in current {
+					a.current = None;
+					batch.save_acct_path(a.clone())?;
+				}
+				a.current = Some(true);
+				batch.save_acct_path(a.clone())?;
+				batch.commit()?;
+
+				self.active_account = a;
+				Ok(())
+			}
+		}
+	}
+
+	/// Set account by stored account name.
+	pub fn set_account_by_name(&mut self, label: &str) -> Result<(), Error> {
 		let label = label.to_owned();
 		let res = self.acct_path_iter()?.find(|l| l.label == label);
 		if let Some(a) = res {
-			self.set_parent_key_id(a.path);
+			self.active_account = a;
 			Ok(())
 		} else {
 			Err(Error::UnknownAccountLabel(label))
 		}
 	}
 
-	/// The BIP32 path of the parent path to use for all output-related
-	/// functions, essentially 'accounts' within a wallet.
-	pub fn set_parent_key_id(&mut self, id: Identifier) {
-		self.parent_key_id = id;
+	/// Get active account.
+	pub fn active_account(&self) -> AcctPathMapping {
+		self.active_account.clone()
 	}
 
 	/// Get the parent path.
 	pub fn parent_key_id(&mut self) -> Identifier {
-		self.parent_key_id.clone()
+		self.active_account.path.clone()
+	}
+
+	/// Resolve an account name, falling back to the active account if absent or unknown
+	pub fn parent_key_id_for(&mut self, name: Option<&str>) -> Result<Identifier, Error> {
+		Ok(name
+			.map(|name| self.get_acct_path(name.to_owned()))
+			.transpose()?
+			.flatten()
+			.map(|account| account.path)
+			.unwrap_or_else(|| self.parent_key_id()))
 	}
 
 	/// Get output data by id.
@@ -326,10 +382,23 @@ where
 	}
 
 	/// Get an (Optional) tx log entry by uuid.
-	pub fn get_tx_log_entry(&self, u: &Uuid) -> Result<Option<TxLogEntry>, Error> {
+	pub fn get_tx_log_entry(
+		&self,
+		id: &Uuid,
+		parent_id: &Identifier,
+	) -> Result<Option<TxLogEntry>, Error> {
+		let tx = self
+			.tx_log_iter()?
+			.flatten()
+			.find(|tx| tx.parent_key_id == *parent_id && tx.tx_slate_id == Some(*id));
+		Ok(tx)
+	}
+
+	pub(crate) fn tx_by_id(&self, id: u32) -> Result<Option<TxLogEntry>, Error> {
+		let key = to_key_u64(self.active_account.path.to_bytes(), id as u64);
 		self.db
-			.get_ser(Some(TX_LOG_ENTRY_PREFIX), u.as_bytes(), None)
-			.map_err(|e| e.into())
+			.get_ser(Some(TX_LOG_ENTRY_PREFIX), &key, None)
+			.map_err(From::from)
 	}
 
 	/// Iterate over all tx log data stored by the backend.
@@ -346,6 +415,123 @@ where
 				)
 				.map_err(From::from)
 			})
+			.map_err(From::from)
+	}
+
+	/// Next transaction slatepack address derivation path index.
+	pub fn next_tx_slatepack_address_index(
+		&mut self,
+		parent_key_id: &Identifier,
+	) -> Result<SlatepackAddressIndex, Error> {
+		let mut index = {
+			let batch = self.db.batch()?;
+			batch
+				.get_ser(
+					Some(TX_ADDRESS_INDEX_PREFIX),
+					&parent_key_id.to_bytes(),
+					None,
+				)?
+				.unwrap_or(0)
+		};
+		if index >= SlatepackAddressIndex::MAX {
+			return Err(Error::SlatepackAddress(
+				"Slatepack address indices exhausted".into(),
+			));
+		}
+		index += 1;
+		let mut batch = self.db.batch()?;
+		batch.put_ser(
+			Some(TX_ADDRESS_INDEX_PREFIX),
+			&parent_key_id.to_bytes(),
+			&index,
+		)?;
+		batch.commit()?;
+		Ok(SlatepackAddressIndex(index))
+	}
+
+	/// Iterator over private tx contexts.
+	pub fn private_context_iter(
+		&self,
+	) -> Result<impl Iterator<Item = Result<Context, grin_store::Error>>, Error> {
+		let protocol_version = self.db.protocol_version();
+		self.db
+			.iter(Some(PRIVATE_TX_CONTEXT_PREFIX), move |_, mut v| {
+				ser::deserialize(
+					&mut v,
+					protocol_version,
+					ser::DeserializationMode::default(),
+				)
+				.map_err(From::from)
+			})
+			.map_err(From::from)
+	}
+
+	pub(crate) fn repair_tx_log(&mut self, keychain_mask: Option<&SecretKey>) -> Result<(), Error> {
+		// Validate the mask before repairing misplaced history entries
+		self.keychain(keychain_mask)?;
+		let version = self.db.protocol_version();
+		let entries = self
+			.db
+			.iter(Some(TX_LOG_ENTRY_PREFIX), move |key, mut value| {
+				let tx: TxLogEntry =
+					ser::deserialize(&mut value, version, ser::DeserializationMode::default())?;
+				Ok((key.to_vec(), tx))
+			})?
+			.collect::<Result<Vec<_>, grin_store::Error>>()?;
+		let accounts: Vec<_> = self.acct_path_iter()?.collect();
+		let outputs: Vec<_> = self.iter()?.collect();
+		let mut duplicates = Vec::new();
+		for (key, tx) in &entries {
+			let canonical = to_key_u64(tx.parent_key_id.to_bytes(), tx.id as u64);
+			if *key == canonical {
+				continue;
+			}
+			let original = entries
+				.iter()
+				.find(|(key, _)| *key == canonical)
+				.map(|(_, tx)| tx);
+			let parent = accounts
+				.iter()
+				.find(|a| to_key_u64(a.path.to_bytes(), tx.id as u64) == *key);
+			let copied = original.is_some_and(|original| {
+				tx.tx_slate_id.is_some()
+					&& original.id == tx.id
+					&& original.tx_slate_id == tx.tx_slate_id
+					&& original.tx_type == tx.tx_type
+					&& original.parent_key_id == tx.parent_key_id
+					&& original.amount_debited == tx.amount_debited
+					&& original.amount_credited == tx.amount_credited
+					&& original.num_inputs == tx.num_inputs
+					&& original.num_outputs == tx.num_outputs
+					&& original.fee == tx.fee
+			});
+			let unused = parent.is_some_and(|parent| {
+				!outputs
+					.iter()
+					.any(|o| o.root_key_id == parent.path && o.tx_log_entry == Some(tx.id))
+			});
+			if !copied || !unused {
+				warn!("Transaction history is ambiguous; skipping duplicate cleanup");
+				return Ok(());
+			}
+			duplicates.push(key);
+		}
+		if !duplicates.is_empty() {
+			let mut batch = self.db.batch()?;
+			for key in duplicates {
+				batch.delete(Some(TX_LOG_ENTRY_PREFIX), key)?;
+			}
+			batch.commit()?;
+		}
+		Ok(())
+	}
+
+	pub(crate) fn has_context(&self, slate_id: &Uuid) -> Result<bool, Error> {
+		self.db
+			.exists(
+				Some(PRIVATE_TX_CONTEXT_PREFIX),
+				&to_key_u64(slate_id.as_bytes(), 0),
+			)
 			.map_err(From::from)
 	}
 
@@ -403,12 +589,24 @@ where
 		let path = Path::new(&self.data_file_dir)
 			.join(TX_SAVE_DIR)
 			.join(filename);
-		let path_buf = Path::new(&path).to_path_buf();
-		let mut stored_tx = File::create(path_buf)?;
-		let tx_hex = ser::ser_vec(tx, ser::ProtocolVersion(1)).unwrap().to_hex();
-		stored_tx.write_all(&tx_hex.as_bytes())?;
-		stored_tx.sync_all()?;
-		Ok(())
+		let tmp = path.with_extension(format!("{}.tmp", Uuid::new_v4()));
+		let result = (|| -> Result<(), Error> {
+			let tx_hex = ser::ser_vec(tx, ser::ProtocolVersion(1))
+				.map_err(|e| Error::Backend(e.to_string()))?
+				.to_hex();
+			let mut stored_tx = fs::OpenOptions::new()
+				.write(true)
+				.create_new(true)
+				.open(&tmp)?;
+			stored_tx.write_all(tx_hex.as_bytes())?;
+			stored_tx.sync_all()?;
+			fs::rename(&tmp, &path)?;
+			Ok(())
+		})();
+		if result.is_err() {
+			let _ = fs::remove_file(tmp);
+		}
+		result
 	}
 
 	/// Retrieves a stored transaction.
@@ -458,34 +656,41 @@ where
 			let batch = self.db.batch()?;
 			batch
 				.get_ser(Some(DERIV_PREFIX), &parent_key_id.to_bytes(), None)?
-				.unwrap_or_else(|| 0)
+				.unwrap_or(0)
 		};
 		Ok(index)
 	}
 
 	/// Next child ID when we want to create a new output, based on current parent.
 	pub fn next_child(&mut self, keychain_mask: Option<&SecretKey>) -> Result<Identifier, Error> {
-		let parent_key_id = self.parent_key_id.clone();
+		self.next_child_for(keychain_mask, &self.active_account.path.clone())
+	}
+
+	pub(crate) fn next_child_for(
+		&mut self,
+		keychain_mask: Option<&SecretKey>,
+		parent_key_id: &Identifier,
+	) -> Result<Identifier, Error> {
 		let mut deriv_idx = {
 			let batch = self.db.batch()?;
 			batch
-				.get_ser(Some(DERIV_PREFIX), &self.parent_key_id.to_bytes(), None)?
-				.unwrap_or_else(|| 0)
+				.get_ser(Some(DERIV_PREFIX), &parent_key_id.to_bytes(), None)?
+				.unwrap_or(0)
 		};
-		let mut return_path = self.parent_key_id.to_path();
+		let mut return_path = parent_key_id.to_path();
 		return_path.depth += 1;
 		return_path.path[return_path.depth as usize - 1] = ChildNumber::from(deriv_idx);
 		deriv_idx += 1;
 		let mut batch = self.batch(keychain_mask)?;
-		batch.save_child_index(&parent_key_id, deriv_idx)?;
+		batch.save_child_index(parent_key_id, deriv_idx)?;
 		batch.commit()?;
 		Ok(Identifier::from_path(&return_path))
 	}
 
 	/// Last verified height of outputs directly descending from the current parent key.
 	pub fn last_confirmed_height(&mut self) -> Result<u64, Error> {
-		let parent_key_id = self.parent_key_id.clone();
-		self.last_confirmed_height_for_parent(&parent_key_id)
+		let parent_key_id = self.active_account.clone();
+		self.last_confirmed_height_for_parent(&parent_key_id.path)
 	}
 
 	/// Last verified height of outputs directly descending from the given parent key.
@@ -500,7 +705,7 @@ where
 				&parent_key_id.to_bytes(),
 				None,
 			)?
-			.unwrap_or_else(|| 0);
+			.unwrap_or(0);
 		Ok(last_confirmed_height)
 	}
 
@@ -527,7 +732,7 @@ where
 				WALLET_INIT_STATUS_KEY.as_bytes(),
 				None,
 			)?
-			.unwrap_or_else(|| WalletInitStatus::InitComplete);
+			.unwrap_or(WalletInitStatus::InitComplete);
 		Ok(status)
 	}
 }
@@ -647,7 +852,7 @@ where
 		let last_tx_log_id = self
 			.db
 			.get_ser(Some(TX_LOG_ID_PREFIX), &parent_key_id.to_bytes(), None)?
-			.unwrap_or_else(|| 0);
+			.unwrap_or(0);
 		self.db.put_ser(
 			Some(TX_LOG_ID_PREFIX),
 			&parent_key_id.to_bytes(),
@@ -693,7 +898,8 @@ where
 	}
 
 	/// Save an account label -> path mapping.
-	pub fn save_acct_path(&mut self, mapping: AcctPathMapping) -> Result<(), Error> {
+	pub fn save_acct_path(&mut self, mut mapping: AcctPathMapping) -> Result<(), Error> {
+		mapping.info = None;
 		self.db.put_ser(
 			Some(ACCOUNT_PATH_MAPPING_PREFIX),
 			mapping.label.as_bytes(),

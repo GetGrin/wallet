@@ -20,14 +20,15 @@ use super::owner::tx_lock_outputs;
 use crate::api_impl::owner::{check_ttl, post_tx};
 use crate::api_impl::types::update_tx_slate_state;
 use crate::backend::WalletBackend;
-use crate::grin_core::core::FeeFields;
-use crate::grin_keychain::Keychain;
-use crate::grin_util::secp::key::SecretKey;
 use crate::internal::{selection, tx, updater};
 use crate::slate_versions::SlateVersion;
+use crate::slatepack::SlatepackAddressIndex;
 use crate::{
 	address, BlockFees, CbData, Error, NodeClient, Slate, SlateState, TxLogEntryType, VersionInfo,
 };
+use grin_core::core::FeeFields;
+use grin_keychain::Keychain;
+use grin_util::secp::key::SecretKey;
 
 const FOREIGN_API_VERSION: u16 = 2;
 
@@ -65,30 +66,24 @@ where
 	C: NodeClient,
 	K: Keychain,
 {
+	if slate.amount == 0 {
+		return Err(Error::InvalidAmount);
+	}
+
 	let mut ret_slate = slate.clone();
+	if ret_slate.state != SlateState::Standard1 {
+		return Err(Error::SlateState);
+	}
 	check_ttl(w, &ret_slate)?;
-	let parent_key_id = match dest_acct_name {
-		Some(d) => {
-			let pm = w.get_acct_path(d.to_owned())?;
-			match pm {
-				Some(p) => p.path,
-				None => w.parent_key_id(),
-			}
-		}
-		None => w.parent_key_id(),
-	};
+	let parent_key_id = w.parent_key_id_for(dest_acct_name)?;
 	// Don't do this multiple times
-	let tx = updater::retrieve_txs(
-		w,
-		None,
-		Some(ret_slate.id),
-		None,
-		Some(&parent_key_id),
-		use_test_rng,
-	)?;
+	let tx = updater::retrieve_txs(w, None, Some(ret_slate.id), None, None, false)?;
 	for t in &tx {
 		if t.tx_type == TxLogEntryType::TxReceived {
 			return Err(Error::TransactionAlreadyReceived(ret_slate.id.to_string()));
+		}
+		if t.tx_type == TxLogEntryType::TxReceivedCancelled {
+			return Err(Error::TransactionWasCancelled(ret_slate.id.to_string()));
 		}
 	}
 
@@ -117,7 +112,11 @@ where
 			ret_slate.amount,
 			&excess,
 			p.sender_address,
-			address::address_from_derivation_path(&keychain, &parent_key_id, 0)?,
+			address::address_from_derivation_path(
+				&keychain,
+				&parent_key_id,
+				SlatepackAddressIndex(0),
+			)?,
 		)?;
 
 		p.receiver_signature = Some(sig);
@@ -144,6 +143,16 @@ where
 	C: NodeClient,
 	K: Keychain,
 {
+	for entry in w.tx_log_iter()? {
+		let entry = entry?;
+		if entry.tx_slate_id == Some(slate.id)
+			&& matches!(
+				entry.tx_type,
+				TxLogEntryType::TxSentCancelled | TxLogEntryType::TxReceivedCancelled
+			) {
+			return Err(Error::TransactionWasCancelled(slate.id.to_string()));
+		}
+	}
 	let mut sl = slate.clone();
 	let mut context = w.get_private_context(keychain_mask, sl.id.as_bytes())?;
 	check_ttl(w, &sl)?;
@@ -157,20 +166,13 @@ where
 		selection::repopulate_tx(w, keychain_mask, &mut sl, &temp_ctx, false)?;
 
 		tx::complete_tx(w, keychain_mask, &mut sl, &context)?;
-		tx::update_stored_tx(w, keychain_mask, &context, &mut sl, true)?;
-		{
-			let mut batch = w.batch(keychain_mask)?;
-			batch.delete_private_context(sl.id.as_bytes())?;
-			batch.commit()?;
-		}
+		tx::update_stored_tx(w, keychain_mask, &context, &sl, true)?;
+
 		sl.state = SlateState::Invoice3;
 		sl.amount = 0;
-
-		let parent_key_id = w.parent_key_id();
-		update_tx_slate_state(w, keychain_mask, &parent_key_id, &sl)?;
 	} else if sl.state == SlateState::Standard2 {
 		let keychain = w.keychain(keychain_mask)?;
-		let parent_key_id = w.parent_key_id();
+		let parent_key_id = context.parent_key_id.clone();
 
 		if let Some(args) = context.late_lock_args.take() {
 			// Transaction was late locked, select inputs+change now
@@ -219,15 +221,8 @@ where
 		tx::complete_tx(w, keychain_mask, &mut sl, &context)?;
 		tx::verify_slate_payment_proof(w, keychain_mask, &parent_key_id, &context, &sl)?;
 		tx::update_stored_tx(w, keychain_mask, &context, &sl, false)?;
-		{
-			let mut batch = w.batch(keychain_mask)?;
-			batch.delete_private_context(sl.id.as_bytes())?;
-			batch.commit()?;
-		}
 		sl.state = SlateState::Standard3;
 		sl.amount = 0;
-
-		update_tx_slate_state(w, keychain_mask, &parent_key_id, &sl)?;
 	} else {
 		return Err(Error::SlateState);
 	}

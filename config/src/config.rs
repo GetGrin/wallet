@@ -170,13 +170,13 @@ pub fn get_wallet_path(
 	// A - Detect grin-wallet.toml in working dir
 	let mut config_path = env::current_dir()?;
 	config_path.push(WALLET_CONFIG_FILE_NAME);
-	if create_path == false && config_path.exists() {
+	if !create_path && config_path.exists() {
 		config_path.pop();
 		println!("Detected 'grin-wallet.toml' in working dir - opening associated wallet");
 		return Ok(config_path);
 	};
 	// B - Select home directory
-	let mut wallet_path = dirs::home_dir().unwrap_or_else(|| PathBuf::new());
+	let mut wallet_path = dirs::home_dir().unwrap_or_default();
 	wallet_path.push(GRIN_HOME);
 	wallet_path.push(chain_type.shortname());
 	// Create if the default path doesn't exist
@@ -199,7 +199,7 @@ pub fn get_node_path(
 	data_path: Option<PathBuf>,
 	chain_type: &global::ChainTypes,
 ) -> Result<PathBuf, ConfigError> {
-	let node_path = match data_path {
+	match data_path {
 		// 1) A If top dir provided and api_secret exist, return top dir
 		Some(path) => {
 			let mut node_path = path;
@@ -211,7 +211,7 @@ pub fn get_node_path(
 				Ok(node_path)
 			// 1) B If top dir exists, but no api_secret, return home dir
 			} else {
-				let mut node_path = dirs::home_dir().unwrap_or_else(|| PathBuf::new());
+				let mut node_path = dirs::home_dir().unwrap_or_default();
 				node_path.push(GRIN_HOME);
 				node_path.push(chain_type.shortname());
 				Ok(node_path)
@@ -219,13 +219,12 @@ pub fn get_node_path(
 		}
 		// 2) If there is no top_dir provided, always return home dir
 		None => {
-			let mut node_path = dirs::home_dir().unwrap_or_else(|| PathBuf::new());
+			let mut node_path = dirs::home_dir().unwrap_or_default();
 			node_path.push(GRIN_HOME);
 			node_path.push(chain_type.shortname());
 			Ok(node_path)
 		}
-	};
-	node_path
+	}
 }
 
 /// Checks if config in current working dir
@@ -297,10 +296,10 @@ fn check_api_secret_file(
 
 /// Initial wallet setup does the following
 /// 1) Load wallet config if run without 'init' 2) create wallet if run with 'init'
-/// Try in this order:
-/// a) current dir as template,
-/// b) in top path, or
-/// c) .grin home
+///    Try in this order:
+///    a) current dir as template,
+///    b) in top path, or
+///    c) .grin home
 /// - load default config values
 /// - update the wallet and node dir to the correct paths
 /// - if grin-wallet.toml exists, but the wallet data dir does not, load config and continue wallet generation
@@ -345,6 +344,12 @@ pub fn initial_setup_wallet(
 	config_path.push(WALLET_CONFIG_FILE_NAME);
 	let mut data_dir = wallet_path.clone();
 	data_dir.push(GRIN_WALLET_DIR);
+	if create_path && data_dir.exists() {
+		return Err(ConfigError::SerializationError(format!(
+			"Wallet data already exists at {}. Please back up your wallet data before making changes, or choose another directory for a new wallet",
+			data_dir.display()
+		)));
+	}
 	// Check if a config exists in the working dir, if so load it
 	let (path, config) = match config_path.clone().exists() {
 		// If the config does not exist, load default and updated node and wallet dir
@@ -370,18 +375,8 @@ pub fn initial_setup_wallet(
 
 		// Return config if not run with init
 		true => {
-			// If run with init and seed do not yet exists, continue, else throw error
-			if data_dir.exists() && create_path == true {
-				let msg = format!(
-					"{} already exists in the target directory ({}). Please remove it first",
-					config_path.to_str().unwrap(),
-					data_dir.to_str().unwrap(),
-				);
-				return Err(ConfigError::SerializationError(msg));
-			} else {
-				let config = GlobalWalletConfig::new(config_path)?;
-				(wallet_path, config)
-			}
+			let config = GlobalWalletConfig::new(config_path)?;
+			(wallet_path, config)
 		}
 	};
 
@@ -409,9 +404,9 @@ impl Default for GlobalWalletConfigMembers {
 impl GlobalWalletConfig {
 	/// Same as GlobalConfig::default() but further tweaks parameters to
 	/// apply defaults for each chain type
-	pub fn for_chain(chain_type: &global::ChainTypes, file_path: &PathBuf) -> GlobalWalletConfig {
+	pub fn for_chain(chain_type: &global::ChainTypes, file_path: &Path) -> GlobalWalletConfig {
 		let mut defaults_conf = GlobalWalletConfig {
-			config_file_path: file_path.clone(),
+			config_file_path: file_path.to_path_buf(),
 			members: GlobalWalletConfigMembers::default(),
 		};
 		let defaults = &mut defaults_conf.members.wallet;
@@ -484,7 +479,7 @@ impl GlobalWalletConfig {
 	}
 
 	/// Update paths
-	pub fn update_paths(&mut self, wallet_home: &PathBuf, node_home: &Path) {
+	pub fn update_paths(&mut self, wallet_home: &Path, node_home: &Path) {
 		let mut data_file_dir = wallet_home.to_path_buf();
 		let mut node_secret_path = node_home.to_path_buf();
 		let mut secret_path = wallet_home.to_path_buf();
@@ -634,7 +629,8 @@ impl GlobalWalletConfig {
 		config_file_path: PathBuf,
 	) -> Result<String, ConfigError> {
 		let config: GlobalWalletConfigMembers =
-			toml::from_str(&GlobalWalletConfig::fix_warning_level(config_str.clone())).unwrap();
+			toml::from_str(&GlobalWalletConfig::fix_warning_level(config_str.clone()))
+				.map_err(|e| ConfigError::SerializationError(e.to_string()))?;
 		if config.config_file_version.is_some() {
 			return Ok(config_str);
 		}
@@ -743,6 +739,33 @@ mod tests {
 	use std::sync::{Arc, Barrier};
 	use std::thread;
 	use tempfile::tempdir;
+
+	#[test]
+	fn init_existing() {
+		let dir = tempdir().unwrap();
+		let data = dir.path().join(GRIN_WALLET_DIR);
+		let config = dir.path().join(WALLET_CONFIG_FILE_NAME);
+		fs::create_dir(&data).unwrap();
+		for exists in [false, true] {
+			if exists {
+				fs::write(&config, "unchanged").unwrap();
+			}
+			let error = initial_setup_wallet(
+				&ChainTypes::AutomatedTesting,
+				Some(dir.path().to_path_buf()),
+				true,
+			)
+			.unwrap_err();
+			assert!(error
+				.to_string()
+				.contains("Please back up your wallet data"));
+			assert_eq!(config.exists(), exists);
+			if exists {
+				assert_eq!(fs::read_to_string(&config).unwrap(), "unchanged");
+			}
+			assert!(data.is_dir());
+		}
+	}
 
 	#[test]
 	fn save_roundtrip() {

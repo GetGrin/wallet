@@ -15,30 +15,28 @@
 //! Selection of inputs for building transactions
 
 use crate::error::Error;
-use crate::grin_core::core::amount_to_hr_string;
-use crate::grin_core::libtx::{
-	build,
-	proof::{ProofBuild, ProofBuilder},
-	tx_fee,
-};
-use crate::grin_keychain::{Identifier, Keychain};
-use crate::grin_util::secp::key::SecretKey;
-use crate::grin_util::secp::pedersen;
-use crate::internal::keys;
 use crate::slate::Slate;
 use crate::types::*;
 use crate::util::OnionV3Address;
 use crate::{address, WalletBackend};
+use grin_core::core::amount_to_hr_string;
 use grin_core::core::Transaction;
 use grin_core::global;
-use std::collections::HashMap;
+use grin_core::libtx::{
+	build,
+	proof::{ProofBuild, ProofBuilder},
+	tx_fee,
+};
+use grin_keychain::{Identifier, Keychain};
+use grin_util::secp::key::SecretKey;
+use grin_util::secp::pedersen;
 use std::convert::TryInto;
 
 /// Initialize a transaction on the sender side, returns a corresponding
 /// libwallet transaction slate with the appropriate inputs selected,
 /// and saves the private wallet identifiers of our selected outputs
 /// into our transaction context
-
+#[allow(clippy::too_many_arguments)]
 pub fn build_send_tx<C, K>(
 	wallet: &mut WalletBackend<C, K>,
 	keychain: &K,
@@ -73,9 +71,12 @@ where
 		false,
 	)?;
 	if amount_includes_fee {
-		slate.amount = slate.amount.checked_sub(fee).ok_or(Error::GenericError(
-			"Transaction amount is too small to include fee".to_string(),
-		))?;
+		let small_amount_err =
+			Error::GenericError("Transaction amount is too small to include fee".to_string());
+		if slate.amount == fee {
+			return Err(small_amount_err);
+		}
+		slate.amount = slate.amount.checked_sub(fee).ok_or(small_amount_err)?;
 	};
 
 	if fixed_fee.map(|f| fee != f).unwrap_or(false) {
@@ -104,15 +105,9 @@ where
 		context.add_input(&input.key_id, &input.mmr_index, input.value);
 	}
 
-	let mut commits: HashMap<Identifier, Option<String>> = HashMap::new();
-
-	// Store change output(s) and cached commits
+	// Store change output(s)
 	for (change_amount, id, mmr_index) in &change_amounts_derivations {
-		context.add_output(&id, &mmr_index, *change_amount);
-		commits.insert(
-			id.clone(),
-			wallet.calc_commit_for_cache(keychain_mask, *change_amount, &id)?,
-		);
+		context.add_output(id, mmr_index, *change_amount);
 	}
 
 	Ok(context)
@@ -132,20 +127,47 @@ where
 	C: NodeClient,
 	K: Keychain,
 {
-	let mut output_commits: HashMap<Identifier, (Option<String>, u64)> = HashMap::new();
-	// Store cached commits before locking wallet
-	let mut total_change = 0;
-	for (id, _, change_amount) in &context.get_outputs() {
-		output_commits.insert(
-			id.clone(),
-			(
-				wallet.calc_commit_for_cache(keychain_mask, *change_amount, &id)?,
-				*change_amount,
-			),
-		);
-		total_change += change_amount;
+	let mut received = Vec::new();
+	for entry in wallet.tx_log_iter()? {
+		let entry = entry?;
+		if entry.tx_slate_id != Some(slate.id) {
+			continue;
+		}
+		if entry.parent_key_id == context.parent_key_id {
+			match entry.tx_type {
+				TxLogEntryType::TxSent => {
+					return Err(Error::TransactionAlreadyReceived(slate.id.to_string()))
+				}
+				TxLogEntryType::TxSentCancelled => {
+					return Err(Error::TransactionWasCancelled(slate.id.to_string()))
+				}
+				_ => {}
+			}
+		}
+		if entry.tx_type == TxLogEntryType::TxReceived {
+			received.push(entry);
+		}
 	}
-
+	let received_outputs: Vec<_> = wallet
+		.iter()?
+		.filter(|output| {
+			received
+				.iter()
+				.any(|t| output.root_key_id == t.parent_key_id && output.tx_log_entry == Some(t.id))
+		})
+		.map(|output| output.key_id)
+		.collect();
+	let mut change_outputs = Vec::new();
+	// Prepare change before opening the batch
+	let mut total_change = 0;
+	for (id, _, amount) in context.get_outputs() {
+		if received_outputs.contains(&id) {
+			continue;
+		}
+		let commit = wallet.calc_commit_for_cache(keychain_mask, amount, &id)?;
+		change_outputs.push((id, commit, amount));
+		total_change += amount;
+	}
 	debug!("Change amount is: {}", total_change);
 
 	let keychain = wallet.keychain(keychain_mask)?;
@@ -194,8 +216,7 @@ where
 				None => {
 					return Err(Error::PaymentProof(
 						"Payment proof derivation index required".to_owned(),
-					)
-					.into());
+					));
 				}
 			};
 			let sender_key = address::address_from_derivation_path(
@@ -212,11 +233,11 @@ where
 				sender_signature: None,
 			});
 		};
+		t.address_index = context.payment_proof_derivation_index;
 
 		// write the output representing our change
-		for (id, _, _) in &context.get_outputs() {
+		for (id, commit, change_amount) in change_outputs {
 			t.num_outputs += 1;
-			let (commit, change_amount) = output_commits.get(&id).unwrap().clone();
 			t.amount_credited += change_amount;
 			batch.save(OutputData {
 				root_key_id: parent_key_id.clone(),
@@ -260,7 +281,7 @@ where
 	K: Keychain,
 {
 	// Create a potential output for this transaction
-	let key_id = keys::next_available_key(wallet, keychain_mask).unwrap();
+	let key_id = wallet.next_child_for(keychain_mask, &parent_key_id)?;
 	let keychain = wallet.keychain(keychain_mask)?;
 	let key_id_inner = key_id.clone();
 	let amount = slate.amount;
@@ -318,6 +339,7 @@ where
 /// Builds a transaction to send to someone from the HD seed associated with the
 /// wallet and the amount to send. Handles reading through the wallet data file,
 /// selecting outputs to spend and building the change.
+#[allow(clippy::too_many_arguments, clippy::type_complexity)]
 pub fn select_send_tx<C, K, B>(
 	wallet: &mut WalletBackend<C, K>,
 	keychain_mask: Option<&SecretKey>,
@@ -353,7 +375,7 @@ where
 		max_outputs,
 		change_outputs,
 		selection_strategy_is_use_all,
-		&parent_key_id,
+		parent_key_id,
 	)?;
 
 	// build transaction skeleton with inputs and change
@@ -365,12 +387,14 @@ where
 		fee,
 		change_outputs,
 		include_inputs_in_sum,
+		parent_key_id,
 	)?;
 
 	Ok((parts, coins, change_amounts_derivations, fee))
 }
 
 /// Select outputs and calculating fee.
+#[allow(clippy::too_many_arguments)]
 pub fn select_coins_and_fee<C, K>(
 	wallet: &mut WalletBackend<C, K>,
 	amount: u64,
@@ -562,16 +586,38 @@ where
 	C: NodeClient,
 	K: Keychain,
 {
+	// Skip outputs from unfinished local transactions
+	let mut pending = Vec::new();
+	if minimum_confirmations == 0 {
+		for entry in wallet.tx_log_iter()? {
+			let entry = entry?;
+			if entry.parent_key_id != *parent_key_id
+				|| matches!(
+					entry.tx_slate_state,
+					Some(crate::SlateState::Standard3 | crate::SlateState::Invoice3)
+				) {
+				continue;
+			}
+			if let Some(id) = entry.tx_slate_id {
+				if wallet.has_context(&id)? {
+					pending.push(entry.id);
+				}
+			}
+		}
+	}
 	Ok(wallet
 		.iter()?
 		.filter(|output| {
 			output.root_key_id == *parent_key_id
 				&& output.eligible_to_spend(current_height, minimum_confirmations)
+				&& !(output.status == OutputStatus::Unconfirmed
+					&& output.tx_log_entry.is_some_and(|id| pending.contains(&id)))
 		})
 		.collect())
 }
 
 /// Selects inputs and change for a transaction
+#[allow(clippy::type_complexity, clippy::too_many_arguments)]
 pub fn inputs_and_change<C, K, B>(
 	coins: &[OutputData],
 	wallet: &mut WalletBackend<C, K>,
@@ -580,6 +626,7 @@ pub fn inputs_and_change<C, K, B>(
 	fee: u64,
 	num_change_outputs: usize,
 	include_inputs_in_sum: bool,
+	parent_key_id: &Identifier,
 ) -> Result<
 	(
 		Vec<Box<build::Append<K, B>>>,
@@ -634,7 +681,7 @@ where
 				part_change
 			};
 
-			let change_key = wallet.next_child(keychain_mask)?;
+			let change_key = wallet.next_child_for(keychain_mask, parent_key_id)?;
 
 			change_amounts_derivations.push((change_amount, change_key.clone(), None));
 			parts.push(build::output(change_amount, change_key));
@@ -761,7 +808,7 @@ where
 	let keychain = wallet.keychain(keychain_mask)?;
 
 	// restore my signature data
-	slate.add_participant_info(&keychain, &context, None)?;
+	slate.add_participant_info(&keychain, context, None)?;
 
 	let mut parts = vec![];
 	for (id, mmr_index, value) in &context.get_inputs() {
